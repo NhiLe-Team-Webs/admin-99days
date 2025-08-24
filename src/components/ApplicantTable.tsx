@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { getApplicants, updateApplicantStatus } from '@/lib/api';
+import { getApplicants } from '@/lib/api';
 
 export interface Applicant {
   id: string;
@@ -8,7 +8,6 @@ export interface Applicant {
   email: string;
   telegram: string;
   ly_do: string;
-  status: 'pending' | 'approved' | 'rejected';
 }
 
 interface ApplicantTableProps {
@@ -34,26 +33,6 @@ export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => 
 
     fetchApplicants();
   }, []);
-
-  const handleApprove = async (id: string) => {
-    try {
-      await updateApplicantStatus(id, 'approved');
-      setApplicants(prev => prev.filter(app => app.id !== id));
-      onApprove(id);
-    } catch (error) {
-      console.error('Failed to approve applicant:', error);
-    }
-  };
-
-  const handleReject = async (id: string, name: string) => {
-    try {
-      await updateApplicantStatus(id, 'rejected');
-      setApplicants(prev => prev.filter(app => app.id !== id));
-      onReject(id, name);
-    } catch (error) {
-      console.error('Failed to reject applicant:', error);
-    }
-  };
 
   if (loading) {
     return (
@@ -120,7 +99,7 @@ export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => 
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleApprove(applicant.id)}
+                    onClick={() => onApprove(applicant.id)}
                     className="text-success hover:text-success-foreground hover:bg-success-light font-semibold"
                   >
                     Duyệt
@@ -128,7 +107,7 @@ export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => 
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleReject(applicant.id, applicant.ho_ten)}
+                    onClick={() => onReject(applicant.id, applicant.ho_ten)}
                     className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
                   >
                     Từ chối

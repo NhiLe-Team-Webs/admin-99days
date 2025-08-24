@@ -3,17 +3,17 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 
 export interface Member {
-  id: number;
-  name: string;
+  id: string;
+  ho_ten: string;
   email: string;
   telegram: string;
-  phone: string;
-  joinDate: string;
+  so_dien_thoai: string;
+  approved_at: string;
 }
 
 interface MemberTableProps {
   members: Member[];
-  onRemove: (id: number, name: string) => void;
+  onRemove: (id: string, name: string) => void;
 }
 
 export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
@@ -21,10 +21,10 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
 
   const filteredMembers = members.filter(
     (member) =>
-      member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      member.ho_ten.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.telegram.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (member.phone && member.phone.toLowerCase().includes(searchTerm.toLowerCase()))
+      (member.so_dien_thoai && member.so_dien_thoai.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -72,7 +72,7 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
               filteredMembers.map((member) => (
                 <tr key={member.id}>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-foreground">{member.name}</div>
+                    <div className="font-medium text-foreground">{member.ho_ten}</div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-foreground">{member.email}</div>
@@ -81,16 +81,18 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
                     <div className="text-sm text-muted-foreground">{member.telegram}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="text-sm text-muted-foreground">{member.phone}</div>
+                    <div className="text-sm text-muted-foreground">{member.so_dien_thoai}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {member.joinDate}
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-muted-foreground">
+                      {new Date(member.approved_at).toLocaleDateString('vi-VN')}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onRemove(member.id, member.name)}
+                      onClick={() => onRemove(member.id, member.ho_ten)}
                       className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
                     >
                       Loại bỏ

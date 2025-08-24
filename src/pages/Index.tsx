@@ -5,9 +5,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { TabNavigation } from "@/components/TabNavigation";
 import { StatsCard } from "@/components/StatsCard";
-import { ApplicantTable, type Applicant } from "@/components/ApplicantTable";
-import { MemberTable, type Member } from "@/components/MemberTable";
+import { ApplicantTable } from "@/components/ApplicantTable";
+import { MemberTable } from "@/components/MemberTable";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import {
+  getApplicants,
+  getMembers,
+  approveApplicant,
+  updateApplicantStatus,
+  removeMember,
+} from "@/lib/api";
+import type { Applicant as ApplicantType } from "@/components/ApplicantTable";
+import type { Member as MemberType } from "@/components/MemberTable";
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
@@ -19,6 +28,10 @@ const tabs = [
 const Index = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [applicants, setApplicants] = useState<ApplicantType[]>([]);
+  const [members, setMembers] = useState<MemberType[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -31,48 +44,6 @@ const Index = () => {
     onConfirm: () => {},
   });
 
-  // Sample data
-  const [applicants, setApplicants] = useState<Applicant[]>([
-    {
-      id: 101,
-      name: "Trịnh Văn Quyết",
-      email: "quyet.trinh@email.com",
-      telegram: "@quyettrinh",
-      reason: "Muốn cải thiện sức khỏe và kỷ luật bản thân.",
-    },
-    {
-      id: 102,
-      name: "Đỗ Thị Hà",
-      email: "ha.do@email.com",
-      telegram: "@hado",
-      reason: "Bạn bè giới thiệu, muốn tham gia cùng cộng đồng.",
-    },
-  ]);
-
-  const [members, setMembers] = useState<Member[]>([
-    {
-      id: 1,
-      name: "Nguyễn Văn An",
-      email: "an.nguyen@email.com",
-      telegram: "@annguyen",
-      joinDate: "2025-08-20",
-    },
-    {
-      id: 2,
-      name: "Trần Thị Bình",
-      email: "binh.tran@email.com",
-      telegram: "@binhtran",
-      joinDate: "2025-08-20",
-    },
-    {
-      id: 3,
-      name: "Lê Văn Cường",
-      email: "cuong.le@email.com",
-      telegram: "@cuongle",
-      joinDate: "2025-08-21",
-    },
-  ]);
-
   const [zoomLinks, setZoomLinks] = useState<string[]>([
     "https://zoom.us/j/1111111111?pwd=DAY1",
     "https://zoom.us/j/2222222222?pwd=DAY2",
@@ -81,11 +52,40 @@ const Index = () => {
 
   const [zoomLinksText, setZoomLinksText] = useState("");
 
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [applicantsData, membersData] = await Promise.all([
+        getApplicants("pending"),
+        getMembers(),
+      ]);
+      setApplicants(applicantsData);
+      setMembers(membersData);
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể tải dữ liệu từ server.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   useEffect(() => {
     setZoomLinksText(zoomLinks.join("\n"));
   }, [zoomLinks]);
 
-  const showConfirmModal = (title: string, description: string, onConfirm: () => void) => {
+  const showConfirmModal = (
+    title: string,
+    description: string,
+    onConfirm: () => void
+  ) => {
     setConfirmModal({
       isOpen: true,
       title,
@@ -98,54 +98,74 @@ const Index = () => {
     setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => {} });
   };
 
-  const handleApprove = (id: number) => {
-    const applicant = applicants.find((app) => app.id === id);
-    if (applicant) {
-      const newMember: Member = {
-        id: applicant.id,
-        name: applicant.name,
-        email: applicant.email,
-        telegram: applicant.telegram,
-        phone: applicant.phone,
-        joinDate: new Date().toISOString().split("T")[0],
-      };
-      setMembers((prev) => [...prev, newMember]);
-      setApplicants((prev) => prev.filter((app) => app.id !== id));
+  const handleApprove = async (id: string) => {
+    try {
+      await approveApplicant(id);
       toast({
         title: "Đã duyệt thành công",
-        description: `${applicant.name} đã được thêm vào danh sách thành viên.`,
+        description: `Một thành viên mới đã được thêm.`,
+      });
+      await fetchData(); // Refetch all data
+    } catch (error) {
+      console.error("Failed to approve applicant:", error);
+      toast({
+        title: "Lỗi",
+        description: "Duyệt đơn thất bại.",
+        variant: "destructive",
       });
     }
   };
 
-  const handleReject = (id: number, name: string) => {
+  const handleReject = (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận từ chối",
       `Bạn có chắc muốn từ chối đơn của <strong>${name}</strong>?`,
-      () => {
-        setApplicants((prev) => prev.filter((app) => app.id !== id));
-        toast({
-          title: "Đã từ chối đơn đăng ký",
-          description: `Đơn đăng ký của ${name} đã bị từ chối.`,
-          variant: "destructive",
-        });
-        closeConfirmModal();
+      async () => {
+        try {
+          await updateApplicantStatus(id, "rejected");
+          toast({
+            title: "Đã từ chối đơn đăng ký",
+            description: `Đơn đăng ký của ${name} đã bị từ chối.`, 
+            variant: "destructive",
+          });
+          await fetchData(); // Refetch all data
+        } catch (error) {
+          console.error("Failed to reject applicant:", error);
+          toast({
+            title: "Lỗi",
+            description: "Từ chối đơn thất bại.",
+            variant: "destructive",
+          });
+        } finally {
+          closeConfirmModal();
+        }
       }
     );
   };
 
-  const handleRemoveMember = (id: number, name: string) => {
+  const handleRemoveMember = (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận loại bỏ",
       `Bạn có chắc muốn loại bỏ thành viên <strong>${name}</strong>?`,
-      () => {
-        setMembers((prev) => prev.filter((member) => member.id !== id));
-        toast({
-          title: "Đã loại bỏ thành viên",
-          description: `${name} đã được loại bỏ khỏi danh sách thành viên.`,
-          variant: "destructive",
-        });
-        closeConfirmModal();
+      async () => {
+        try {
+          await removeMember(id);
+          toast({
+            title: "Đã loại bỏ thành viên",
+            description: `${name} đã được loại bỏ khỏi danh sách thành viên.`, 
+            variant: "destructive",
+          });
+          await fetchData(); // Refetch all data
+        } catch (error) {
+          console.error("Failed to remove member:", error);
+          toast({
+            title: "Lỗi",
+            description: "Loại bỏ thành viên thất bại.",
+            variant: "destructive",
+          });
+        } finally {
+          closeConfirmModal();
+        }
       }
     );
   };
@@ -158,15 +178,50 @@ const Index = () => {
     setZoomLinks(links);
     toast({
       title: "Cập nhật thành công",
-      description: `Đã lưu thành công ${links.length} link Zoom!`,
+      description: `Đã lưu thành công ${links.length} link Zoom!`, 
     });
   };
 
   const todayZoomLink = zoomLinks.length > 0 ? zoomLinks[0] : "Chưa có link nào được thiết lập.";
 
+  const dashboardContent = loading ? (
+    <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
+  ) : (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <StatsCard
+          title="Tổng thành viên"
+          value={members.length}
+          icon={Users}
+          iconBgColor="bg-primary-light"
+          iconColor="text-primary"
+        />
+        <StatsCard
+          title="Đơn đăng ký mới"
+          value={applicants.length}
+          icon={FileText}
+          iconBgColor="bg-info-light"
+          iconColor="text-info"
+        />
+        <StatsCard
+          title="Link Zoom còn lại"
+          value={zoomLinks.length}
+          icon={Link2}
+          iconBgColor="bg-success-light"
+          iconColor="text-success"
+        />
+      </div>
+      <div className="bg-card p-6 rounded-xl shadow-lg">
+        <h2 className="text-xl font-bold mb-4">Link Zoom cho ngày hôm nay</h2>
+        <p className="text-lg text-primary font-semibold bg-muted p-4 rounded-md">
+          {todayZoomLink}
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="bg-card shadow-sm">
         <div className="container mx-auto px-6 py-4">
           <h1 className="text-2xl font-bold text-foreground">
@@ -178,43 +233,8 @@ const Index = () => {
       <main className="container mx-auto px-6 py-8">
         <TabNavigation tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
-        {/* Dashboard Tab */}
-        {activeTab === "dashboard" && (
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <StatsCard
-                title="Tổng thành viên"
-                value={members.length}
-                icon={Users}
-                iconBgColor="bg-primary-light"
-                iconColor="text-primary"
-              />
-              <StatsCard
-                title="Đơn đăng ký mới"
-                value={applicants.length}
-                icon={FileText}
-                iconBgColor="bg-info-light"
-                iconColor="text-info"
-              />
-              <StatsCard
-                title="Link Zoom còn lại"
-                value={zoomLinks.length}
-                icon={Link2}
-                iconBgColor="bg-success-light"
-                iconColor="text-success"
-              />
-            </div>
+        {activeTab === "dashboard" && dashboardContent}
 
-            <div className="bg-card p-6 rounded-xl shadow-lg">
-              <h2 className="text-xl font-bold mb-4">Link Zoom cho ngày hôm nay</h2>
-              <p className="text-lg text-primary font-semibold bg-muted p-4 rounded-md">
-                {todayZoomLink}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Applicants Tab */}
         {activeTab === "applicants" && (
           <ApplicantTable
             applicants={applicants}
@@ -223,12 +243,10 @@ const Index = () => {
           />
         )}
 
-        {/* Members Tab */}
         {activeTab === "members" && (
           <MemberTable members={members} onRemove={handleRemoveMember} />
         )}
 
-        {/* Settings Tab */}
         {activeTab === "settings" && (
           <div className="bg-card p-6 rounded-xl shadow-lg">
             <h2 className="text-xl font-bold mb-4">Quản lý Danh sách Link Zoom</h2>
