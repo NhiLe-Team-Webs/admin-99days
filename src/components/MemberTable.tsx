@@ -7,6 +7,7 @@ export interface Member {
   name: string;
   email: string;
   telegram: string;
+  phone: string;
   joinDate: string;
 }
 
@@ -22,7 +23,8 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
     (member) =>
       member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.telegram.toLowerCase().includes(searchTerm.toLowerCase())
+      member.telegram.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (member.phone && member.phone.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -43,7 +45,13 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
                 Họ Tên
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
-                Email / Telegram
+                Email
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                Telegram
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
+                Số điện thoại
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">
                 Ngày tham gia
@@ -56,7 +64,7 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
           <tbody className="bg-card divide-y divide-border">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={4} className="text-center py-8 text-muted-foreground">
+                <td colSpan={6} className="text-center py-8 text-muted-foreground">
                   Không có thành viên nào.
                 </td>
               </tr>
@@ -68,7 +76,12 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-foreground">{member.email}</div>
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="text-sm text-muted-foreground">{member.telegram}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-muted-foreground">{member.phone}</div>
                   </td>
                   <td className="px-6 py-4 text-sm text-muted-foreground">
                     {member.joinDate}

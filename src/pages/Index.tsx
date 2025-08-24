@@ -106,6 +106,7 @@ const Index = () => {
         name: applicant.name,
         email: applicant.email,
         telegram: applicant.telegram,
+        phone: applicant.phone,
         joinDate: new Date().toISOString().split("T")[0],
       };
       setMembers((prev) => [...prev, newMember]);
