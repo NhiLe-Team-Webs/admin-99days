@@ -1,19 +1,60 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export interface Applicant {
   id: string;
   ho_ten: string;
   email: string;
-  so_dien_thoai: string;
-  telegram: string;
-  nam_sinh: string;
-  ly_do: string;
+  so_dien_thoai: string | null;
+  telegram: string | null;
+  nam_sinh: number | null;
+  ly_do: string | null;
   dong_y: boolean;
   status: 'pending' | 'approved' | 'rejected';
+  approved_at: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
-// Lấy danh sách theo trạng thái
+export interface Member {
+  id: string;
+  ho_ten: string | null;
+  email: string;
+  so_dien_thoai: string | null;
+  telegram: string | null;
+  nam_sinh: number | null;
+  status: 'active' | 'paused' | 'dropped';
+  drop_reason: string | null;
+  applicant_id: string | null;
+  approved_at?: string | null;
+  start_date?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const columnMissing = (error: PostgrestError | null, column: string) =>
+  !!error &&
+  error.code === 'PGRST204' &&
+  (error.message?.toLowerCase().includes(column.toLowerCase()) ?? false);
+
+const generateUuid = () => {
+  const cryptoRef = typeof globalThis !== 'undefined' ? (globalThis as { crypto?: Crypto }).crypto : undefined;
+
+  if (cryptoRef && typeof cryptoRef.randomUUID === 'function') {
+    return cryptoRef.randomUUID();
+  }
+
+  const pattern = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+  return pattern.replace(/[xy]/g, (char) => {
+    const rand = (Math.random() * 16) | 0;
+    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+// Lấy danh sách ứng viên theo trạng thái
 export const getApplicants = async (status: 'pending' | 'approved' | 'rejected') => {
   const { data, error } = await supabase
     .from('applicants')
@@ -22,77 +63,151 @@ export const getApplicants = async (status: 'pending' | 'approved' | 'rejected')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data;
+  return data as Applicant[];
 };
 
-// Cập nhật trạng thái
+// Cập nhật trạng thái ứng viên
 export const updateApplicantStatus = async (id: string, status: 'approved' | 'rejected') => {
+  const approvedAt = status === 'approved' ? nowIso() : null;
+
   const { data, error } = await supabase
     .from('applicants')
-    .update({ status })
+    .update({ status, approved_at: approvedAt })
     .eq('id', id)
     .select();
 
-  if (error) throw error;
-  return data;
+  if (error) {
+    if (columnMissing(error, 'approved_at')) {
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('applicants')
+        .update({ status })
+        .eq('id', id)
+        .select();
+
+      if (fallbackError) throw fallbackError;
+      return fallbackData as Applicant[];
+    }
+    throw error;
+  }
+  return data as Applicant[];
 };
 
-// Chuyển applicant thành member
+// Duyệt ứng viên và đưa vào bảng members
 export const approveApplicant = async (applicantId: string) => {
-  // 1. Lấy thông tin applicant
   const { data: applicant, error: fetchError } = await supabase
     .from('applicants')
     .select('*')
     .eq('id', applicantId)
-    .single();
+    .single<Applicant>();
 
   if (fetchError) throw fetchError;
   if (!applicant) throw new Error('Applicant not found');
 
-  // 2. Thêm vào bảng members
-  const { data: member, error: insertError } = await supabase
+  const approvedAt = nowIso();
+
+  const { data: existingMember, error: existingMemberError } = await supabase
     .from('members')
-    .insert([
-      {
-        ho_ten: applicant.ho_ten,
-        email: applicant.email,
-        so_dien_thoai: applicant.so_dien_thoai,
-        telegram: applicant.telegram,
-        approved_at: new Date().toISOString()
-      }
-    ])
-    .select()
-    .single();
+    .select('id')
+    .eq('email', applicant.email)
+    .maybeSingle<{ id: string }>();
 
-  if (insertError) throw insertError;
+  if (existingMemberError) throw existingMemberError;
 
-  // 3. Xóa khỏi bảng applicants
+  const basePayload = {
+    id: existingMember?.id ?? generateUuid(),
+    email: applicant.email,
+    ho_ten: applicant.ho_ten,
+    so_dien_thoai: applicant.so_dien_thoai,
+    telegram: applicant.telegram,
+    nam_sinh: applicant.nam_sinh,
+    status: 'active' as const,
+    applicant_id: applicant.id,
+    drop_reason: null
+  };
+
+  const attemptUpsert = (payload: Record<string, unknown>) =>
+    supabase
+      .from('members')
+      .upsert([payload], { onConflict: 'email' })
+      .select()
+      .single<Member>();
+
+  let memberData: Member | null = null;
+  let upsertError: PostgrestError | null = null;
+
+  {
+    const { data, error } = await attemptUpsert({ ...basePayload, approved_at: approvedAt });
+    memberData = data;
+    upsertError = error;
+  }
+
+  if (upsertError) {
+    if (columnMissing(upsertError, 'approved_at')) {
+      const { approved_at: _ignored, ...fallbackPayload } = {
+        ...basePayload,
+        approved_at: approvedAt
+      };
+      const { data: fallbackData, error: fallbackError } = await attemptUpsert(fallbackPayload);
+      if (fallbackError) throw fallbackError;
+      memberData = fallbackData;
+    } else {
+      throw upsertError;
+    }
+  }
+
+  const member = memberData;
+  if (!member) throw new Error('Failed to upsert member');
+
+  const { error: updateError } = await supabase
+    .from('applicants')
+    .update({ status: 'approved', approved_at: approvedAt })
+    .eq('id', applicantId);
+
+  if (updateError) {
+    if (columnMissing(updateError, 'approved_at')) {
+      const { error: fallbackUpdateError } = await supabase
+        .from('applicants')
+        .update({ status: 'approved' })
+        .eq('id', applicantId);
+
+      if (fallbackUpdateError) throw fallbackUpdateError;
+    } else {
+      throw updateError;
+    }
+  }
+
   const { error: deleteError } = await supabase
     .from('applicants')
     .delete()
     .eq('id', applicantId);
 
-  if (deleteError) throw deleteError;
+  if (deleteError) {
+    console.warn('Failed to delete applicant after approval:', deleteError);
+  }
 
   return member;
 };
 
-// Lấy danh sách members
+// Lấy danh sách thành viên đang hoạt động
 export const getMembers = async () => {
   const { data, error } = await supabase
     .from('members')
     .select('*')
-    .order('approved_at', { ascending: false });
+    .eq('status', 'active');
 
   if (error) throw error;
-  return data;
+  return data as Member[];
 };
 
-// Xóa member
-export const removeMember = async (id: string) => {
+// Đánh dấu thành viên bị loại
+export const removeMember = async (id: string, dropReason?: string) => {
   const { error } = await supabase
     .from('members')
-    .delete()
+    .update({
+      status: 'dropped',
+      drop_reason: dropReason ?? 'Removed by admin',
+      updated_at: nowIso()
+    })
     .eq('id', id);
 
   if (error) throw error;

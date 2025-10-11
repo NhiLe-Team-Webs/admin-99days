@@ -28,7 +28,7 @@
 - Toan bo tac vu Supabase thuc hien trong `lib/api.ts` de tach biet tang du lieu va giao dien.
 
 ## Ghi chu van hanh
-- Dien day du `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) de ung dung ket noi dung co so du lieu chung voi frontend 99days.
+- Dien day du `.env` (`VITE_SUPABASE_URL`, `VITE_SUPABASE_KEY`) de ung dung ket noi dung co so du lieu chung voi frontend 99days.
 - Neu chay song song voi ung dung khach hang, hay dam bao quyen truy cap Supabase duoc gioi han theo vai tro (service role hoac RLS).
 
 ## Dinh huong mo rong

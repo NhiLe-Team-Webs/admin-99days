@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Users, FileText, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,8 +15,8 @@ import {
   updateApplicantStatus,
   removeMember,
 } from "@/lib/api";
-import type { Applicant as ApplicantType } from "@/components/ApplicantTable";
-import type { Member as MemberType } from "@/components/MemberTable";
+import type { Applicant, Member } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
@@ -25,11 +25,26 @@ const tabs = [
   { id: "settings", label: "Cài đặt" },
 ];
 
+const sortApplicantsByNewest = (items: Applicant[]) =>
+  [...items].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+const resolveMemberTimestamp = (member: Member) =>
+  member.approved_at ?? member.start_date ?? member.created_at;
+
+const sortMembersByRecentApproval = (items: Member[]) =>
+  [...items].sort(
+    (a, b) =>
+      new Date(resolveMemberTimestamp(b)).getTime() -
+      new Date(resolveMemberTimestamp(a)).getTime()
+  );
+
 const Index = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [applicants, setApplicants] = useState<ApplicantType[]>([]);
-  const [members, setMembers] = useState<MemberType[]>([]);
+  const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -52,15 +67,15 @@ const Index = () => {
 
   const [zoomLinksText, setZoomLinksText] = useState("");
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [applicantsData, membersData] = await Promise.all([
         getApplicants("pending"),
         getMembers(),
       ]);
-      setApplicants(applicantsData);
-      setMembers(membersData);
+      setApplicants(sortApplicantsByNewest(applicantsData));
+      setMembers(sortMembersByRecentApproval(membersData));
     } catch (error) {
       console.error("Failed to fetch data:", error);
       toast({
@@ -71,10 +86,79 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-dashboard-stream")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "applicants" }, (payload) => {
+        const newApplicant = payload.new as Applicant | null;
+        if (!newApplicant || newApplicant.status !== "pending") {
+          return;
+        }
+        setApplicants((prev) =>
+          sortApplicantsByNewest([
+            newApplicant,
+            ...prev.filter((applicant) => applicant.id !== newApplicant.id),
+          ])
+        );
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "applicants" }, (payload) => {
+        const updatedApplicant = payload.new as Applicant | null;
+        if (!updatedApplicant) {
+          return;
+        }
+        setApplicants((prev) => {
+          const others = prev.filter((applicant) => applicant.id !== updatedApplicant.id);
+          if (updatedApplicant.status === "pending") {
+            return sortApplicantsByNewest([updatedApplicant, ...others]);
+          }
+          return others;
+        });
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "applicants" }, (payload) => {
+        const removedApplicant = payload.old as Applicant | null;
+        if (!removedApplicant) {
+          return;
+        }
+        setApplicants((prev) =>
+          prev.filter((applicant) => applicant.id !== removedApplicant.id)
+        );
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "members" }, (payload) => {
+        const newMember = payload.new as Member | null;
+        if (!newMember || newMember.status !== "active") {
+          return;
+        }
+        setMembers((prev) =>
+          sortMembersByRecentApproval([
+            newMember,
+            ...prev.filter((member) => member.id !== newMember.id),
+          ])
+        );
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "members" }, (payload) => {
+        const updatedMember = payload.new as Member | null;
+        if (!updatedMember) {
+          return;
+        }
+        setMembers((prev) => {
+          const others = prev.filter((member) => member.id !== updatedMember.id);
+          if (updatedMember.status === "active") {
+            return sortMembersByRecentApproval([updatedMember, ...others]);
+          }
+          return others;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
@@ -101,6 +185,7 @@ const Index = () => {
   const handleApprove = async (id: string) => {
     try {
       await approveApplicant(id);
+      setApplicants((prev) => prev.filter((applicant) => applicant.id !== id));
       toast({
         title: "Đã duyệt thành công",
         description: `Một thành viên mới đã được thêm.`,
@@ -238,14 +323,20 @@ const Index = () => {
         {activeTab === "applicants" && (
           <ApplicantTable
             applicants={applicants}
+            isLoading={loading}
             onApprove={handleApprove}
             onReject={handleReject}
           />
         )}
 
-        {activeTab === "members" && (
-          <MemberTable members={members} onRemove={handleRemoveMember} />
-        )}
+        {activeTab === "members" &&
+          (loading ? (
+            <div className="bg-card p-6 rounded-xl shadow-lg text-center text-muted-foreground">
+              Dang tai danh sach thanh vien...
+            </div>
+          ) : (
+            <MemberTable members={members} onRemove={handleRemoveMember} />
+          ))}
 
         {activeTab === "settings" && (
           <div className="bg-card p-6 rounded-xl shadow-lg">
