@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
-import { Users, FileText, Link2 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Users, FileText, Link2, Send, Clock3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { TabNavigation } from "@/components/TabNavigation";
 import { StatsCard } from "@/components/StatsCard";
@@ -14,9 +16,22 @@ import {
   approveApplicant,
   updateApplicantStatus,
   removeMember,
+  listZoomLinks,
+  syncZoomLinks,
+  getDailyZoomLinkForDate,
+  assignZoomLinkForDate,
+  markDailyZoomLinkSent,
+  getAdminSettings,
+  updateAdminSettings,
 } from "@/lib/api";
-import type { Applicant, Member } from "@/lib/api";
+import type {
+  Applicant,
+  Member,
+  ZoomLink,
+  DailyZoomLinkWithDetails,
+} from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
@@ -40,6 +55,27 @@ const sortMembersByRecentApproval = (items: Member[]) =>
       new Date(resolveMemberTimestamp(a)).getTime()
   );
 
+const DEFAULT_SEND_TIME = "07:00";
+
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+
+const formatVietnamDate = (dateString: string) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  return date.toLocaleDateString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatTime = (isoString: string) => {
+  const date = new Date(isoString);
+  return date.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const Index = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -59,23 +95,76 @@ const Index = () => {
     onConfirm: () => {},
   });
 
-  const [zoomLinks, setZoomLinks] = useState<string[]>([
-    "https://zoom.us/j/1111111111?pwd=DAY1",
-    "https://zoom.us/j/2222222222?pwd=DAY2",
-    "https://zoom.us/j/3333333333?pwd=DAY3",
-  ]);
-
+  const [zoomLinks, setZoomLinks] = useState<ZoomLink[]>([]);
   const [zoomLinksText, setZoomLinksText] = useState("");
+  const [dailyZoomLink, setDailyZoomLink] =
+    useState<DailyZoomLinkWithDetails | null>(null);
+  const [zoomLinksSaving, setZoomLinksSaving] = useState(false);
+
+  const [telegramBotToken, setTelegramBotToken] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState("");
+  const [telegramSendTime, setTelegramSendTime] = useState(DEFAULT_SEND_TIME);
+  const [telegramSaving, setTelegramSaving] = useState(false);
+  const [telegramSending, setTelegramSending] = useState(false);
+
+  const ensureTodayZoomLink = useCallback(
+    async (availableLinks: ZoomLink[]) => {
+      if (availableLinks.length === 0) {
+        setDailyZoomLink(null);
+        return;
+      }
+
+      const today = getTodayDate();
+
+      try {
+        let daily = await getDailyZoomLinkForDate(today);
+        if (!daily || !daily.zoom_link) {
+          const randomIndex = Math.floor(Math.random() * availableLinks.length);
+          const randomLink = availableLinks[randomIndex];
+          daily = await assignZoomLinkForDate(randomLink.id, today);
+        }
+        setDailyZoomLink(daily);
+      } catch (error) {
+        console.error("Failed to resolve daily zoom link:", error);
+        toast({
+          title: "Lỗi",
+          description: "Không thể lấy link Zoom cho hôm nay.",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [applicantsData, membersData] = await Promise.all([
-        getApplicants("pending"),
-        getMembers(),
-      ]);
+      const [applicantsData, membersData, zoomLinkData, settingsData] =
+        await Promise.all([
+          getApplicants("pending"),
+          getMembers(),
+          listZoomLinks(),
+          getAdminSettings([
+            "telegram_bot_token",
+            "telegram_chat_id",
+            "telegram_send_time",
+          ]),
+        ]);
+
       setApplicants(sortApplicantsByNewest(applicantsData));
       setMembers(sortMembersByRecentApproval(membersData));
+      setZoomLinks(zoomLinkData);
+
+      const formattedText = zoomLinkData.map((link) => link.url).join("\n");
+      setZoomLinksText(formattedText);
+
+      const settingsMap = new Map(settingsData.map((item) => [item.key, item.value]));
+      setTelegramBotToken(settingsMap.get("telegram_bot_token") ?? "");
+      setTelegramChatId(settingsMap.get("telegram_chat_id") ?? "");
+      const sendTime = settingsMap.get("telegram_send_time") ?? DEFAULT_SEND_TIME;
+      setTelegramSendTime(sendTime || DEFAULT_SEND_TIME);
+
+      await ensureTodayZoomLink(zoomLinkData);
     } catch (error) {
       console.error("Failed to fetch data:", error);
       toast({
@@ -86,7 +175,7 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [ensureTodayZoomLink, toast]);
 
   useEffect(() => {
     fetchData();
@@ -162,7 +251,56 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    setZoomLinksText(zoomLinks.join("\n"));
+    if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
+      return;
+    }
+
+    if (dailyZoomLink.telegram_sent_at) {
+      return;
+    }
+
+    if (!canSendTelegram(telegramBotToken, telegramChatId)) {
+      return;
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(telegramSendTime)) {
+      return;
+    }
+
+    const [hourStr, minuteStr] = telegramSendTime.split(":");
+    const hours = Number(hourStr);
+    const minutes = Number(minuteStr);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return;
+    }
+
+    const scheduledAt = new Date(`${dailyZoomLink.scheduled_for}T00:00:00`);
+    scheduledAt.setHours(hours, minutes, 0, 0);
+
+    const now = new Date();
+    const delay = scheduledAt.getTime() - now.getTime();
+
+    if (delay <= 0) {
+      void handleSendToTelegram();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void handleSendToTelegram();
+    }, delay);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    dailyZoomLink,
+    telegramSendTime,
+    telegramBotToken,
+    telegramChatId,
+    handleSendToTelegram,
+  ]);
+
+  useEffect(() => {
+    setZoomLinksText(zoomLinks.map((link) => link.url).join("\n"));
   }, [zoomLinks]);
 
   const showConfirmModal = (
@@ -255,19 +393,174 @@ const Index = () => {
     );
   };
 
-  const handleUpdateZoomLinks = () => {
+  const handleUpdateZoomLinks = async () => {
     const links = zoomLinksText
       .split("\n")
       .map((link) => link.trim())
       .filter((link) => link.length > 0);
-    setZoomLinks(links);
-    toast({
-      title: "Cập nhật thành công",
-      description: `Đã lưu thành công ${links.length} link Zoom!`, 
-    });
+
+    try {
+      setZoomLinksSaving(true);
+      const updatedLinks = await syncZoomLinks(links);
+      setZoomLinks(updatedLinks);
+      setZoomLinksText(updatedLinks.map((item) => item.url).join("\n"));
+      await ensureTodayZoomLink(updatedLinks);
+      toast({
+        title: "Cập nhật thành công",
+        description: `Đã lưu thành công ${updatedLinks.length} link Zoom!`,
+      });
+    } catch (error) {
+      console.error("Failed to update zoom links:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể lưu danh sách link Zoom.",
+        variant: "destructive",
+      });
+    } finally {
+      setZoomLinksSaving(false);
+    }
   };
 
-  const todayZoomLink = zoomLinks.length > 0 ? zoomLinks[0] : "Chưa có link nào được thiết lập.";
+  const todayZoomLink = useMemo(
+    () => dailyZoomLink?.zoom_link?.url ?? "Chưa có link nào được thiết lập.",
+    [dailyZoomLink]
+  );
+
+  const scheduledDateLabel = useMemo(
+    () => formatVietnamDate(dailyZoomLink?.scheduled_for ?? getTodayDate()),
+    [dailyZoomLink]
+  );
+
+  const telegramStatusLabel = useMemo(() => {
+    if (!dailyZoomLink?.zoom_link) {
+      return "Chưa có link Zoom để gửi.";
+    }
+
+    if (!canSendTelegram(telegramBotToken, telegramChatId)) {
+      return "Chưa cấu hình Bot Token hoặc Chat ID.";
+    }
+
+    if (dailyZoomLink.telegram_sent_at) {
+      return `Đã gửi Telegram lúc ${formatTime(dailyZoomLink.telegram_sent_at)}.`;
+    }
+
+    return "Chưa gửi lên Telegram.";
+  }, [dailyZoomLink, telegramBotToken, telegramChatId]);
+
+  const telegramStatusClass = useMemo(() => {
+    if (!dailyZoomLink?.zoom_link) {
+      return "text-muted-foreground";
+    }
+
+    if (dailyZoomLink.telegram_sent_at) {
+      return "text-success";
+    }
+
+    if (!canSendTelegram(telegramBotToken, telegramChatId)) {
+      return "text-warning";
+    }
+
+    return "text-info";
+  }, [dailyZoomLink, telegramBotToken, telegramChatId]);
+
+  const handleJoinZoomNow = () => {
+    if (!dailyZoomLink?.zoom_link?.url) {
+      return;
+    }
+
+    window.open(dailyZoomLink.zoom_link.url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleSaveTelegramSettings = async () => {
+    if (!/^\d{2}:\d{2}$/.test(telegramSendTime)) {
+      toast({
+        title: "Giờ gửi không hợp lệ",
+        description: "Vui lòng nhập giờ theo định dạng HH:MM.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setTelegramSaving(true);
+      await updateAdminSettings({
+        telegram_bot_token: telegramBotToken,
+        telegram_chat_id: telegramChatId,
+        telegram_send_time: telegramSendTime,
+      });
+      toast({
+        title: "Đã lưu cài đặt",
+        description: "Thông tin gửi Telegram đã được cập nhật.",
+      });
+    } catch (error) {
+      console.error("Failed to save telegram settings:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể lưu cài đặt Telegram.",
+        variant: "destructive",
+      });
+    } finally {
+      setTelegramSaving(false);
+    }
+  };
+
+  const handleSendToTelegram = useCallback(async () => {
+    if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
+      toast({
+        title: "Chưa có link Zoom",
+        description: "Hãy thiết lập danh sách link Zoom trước khi gửi.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (telegramSending) {
+      return;
+    }
+
+    if (!canSendTelegram(telegramBotToken, telegramChatId)) {
+      toast({
+        title: "Thiếu thông tin Telegram",
+        description: "Vui lòng nhập đầy đủ Bot Token và Chat ID để gửi tin nhắn.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const message = `Link Zoom cho ngày ${formatVietnamDate(
+      dailyZoomLink.scheduled_for
+    )}:\n${dailyZoomLink.zoom_link.url}`;
+
+    try {
+      setTelegramSending(true);
+      await sendTelegramMessage({
+        token: telegramBotToken.trim(),
+        chatId: telegramChatId.trim(),
+        text: message,
+      });
+      const updated = await markDailyZoomLinkSent(dailyZoomLink.id);
+      setDailyZoomLink(updated);
+      toast({
+        title: "Đã gửi lên Telegram",
+        description: "Link Zoom ngày hôm nay đã được gửi thành công.",
+      });
+    } catch (error) {
+      console.error("Failed to send telegram message:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể gửi tin nhắn Telegram.",
+        variant: "destructive",
+      });
+    } finally {
+      setTelegramSending(false);
+    }
+  }, [
+    dailyZoomLink,
+    telegramBotToken,
+    telegramChatId,
+    telegramSending,
+    toast,
+  ]);
 
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
@@ -296,11 +589,43 @@ const Index = () => {
           iconColor="text-success"
         />
       </div>
-      <div className="bg-card p-6 rounded-xl shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Link Zoom cho ngày hôm nay</h2>
-        <p className="text-lg text-primary font-semibold bg-muted p-4 rounded-md">
+      <div className="bg-card p-6 rounded-xl shadow-lg space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">Link Zoom cho ngày hôm nay</h2>
+            <p className="text-sm text-muted-foreground">Ngày {scheduledDateLabel}</p>
+          </div>
+          <Button
+            onClick={handleJoinZoomNow}
+            disabled={!dailyZoomLink?.zoom_link}
+            className="md:w-auto"
+          >
+            Tham gia ngay
+          </Button>
+        </div>
+        <p className="text-lg text-primary font-semibold bg-muted p-4 rounded-md break-words">
           {todayZoomLink}
         </p>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 items-center">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock3 className="h-4 w-4" />
+            <span>Giờ gửi tự động: {telegramSendTime || "Chưa thiết lập"}</span>
+          </div>
+          <div className={`text-sm font-medium ${telegramStatusClass}`}>
+            {telegramStatusLabel}
+          </div>
+          <div className="md:col-span-2 lg:col-span-1 flex md:justify-end">
+            <Button
+              variant="outline"
+              onClick={handleSendToTelegram}
+              disabled={!dailyZoomLink?.zoom_link || telegramSending}
+              className="w-full md:w-auto"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              {telegramSending ? "Đang gửi..." : "Gửi lên Telegram"}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -350,10 +675,52 @@ const Index = () => {
             />
             <Button
               onClick={handleUpdateZoomLinks}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary-hover font-semibold"
+              disabled={zoomLinksSaving}
+              className="w-full font-semibold"
             >
-              Lưu Danh Sách Link
+              {zoomLinksSaving ? "Đang lưu..." : "Lưu Danh Sách Link"}
             </Button>
+            <div className="mt-8 space-y-4">
+              <h3 className="text-lg font-semibold">Cài đặt gửi Telegram</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="telegram-bot-token">Telegram Bot Token</Label>
+                  <Input
+                    id="telegram-bot-token"
+                    type="password"
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramBotToken(e.target.value)}
+                    placeholder="123456:ABCDEF..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="telegram-chat-id">Telegram Chat ID</Label>
+                  <Input
+                    id="telegram-chat-id"
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    placeholder="-1001234567890"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="telegram-send-time">Giờ gửi tự động (HH:MM)</Label>
+                  <Input
+                    id="telegram-send-time"
+                    type="time"
+                    value={telegramSendTime}
+                    onChange={(e) => setTelegramSendTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={handleSaveTelegramSettings}
+                disabled={telegramSaving}
+                variant="secondary"
+                className="w-full md:w-auto"
+              >
+                {telegramSaving ? "Đang lưu cài đặt..." : "Lưu Cài Đặt Telegram"}
+              </Button>
+            </div>
           </div>
         )}
       </main>

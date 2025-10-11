@@ -57,9 +57,54 @@ before update on public.members
 for each row
 execute function public.set_updated_at();
 
+create table if not exists public.zoom_links (
+  id uuid primary key default gen_random_uuid(),
+  url text not null unique,
+  label text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists zoom_links_set_updated_at on public.zoom_links;
+create trigger zoom_links_set_updated_at
+before update on public.zoom_links
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.daily_zoom_links (
+  id uuid primary key default gen_random_uuid(),
+  zoom_link_id uuid not null references public.zoom_links (id) on delete cascade,
+  scheduled_for date not null unique,
+  telegram_sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists daily_zoom_links_set_updated_at on public.daily_zoom_links;
+create trigger daily_zoom_links_set_updated_at
+before update on public.daily_zoom_links
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.admin_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists admin_settings_set_updated_at on public.admin_settings;
+create trigger admin_settings_set_updated_at
+before update on public.admin_settings
+for each row
+execute function public.set_updated_at();
+
 -- Activate Row Level Security so we can tailor access
 alter table public.applicants enable row level security;
 alter table public.members enable row level security;
+alter table public.zoom_links enable row level security;
+alter table public.daily_zoom_links enable row level security;
+alter table public.admin_settings enable row level security;
 
 -- Applicants policies -------------------------------------------------------
 drop policy if exists "Allow anonymous applicant inserts" on public.applicants;
@@ -118,6 +163,79 @@ with check (true);
 drop policy if exists "Allow applicant status updates" on public.applicants;
 create policy "Allow applicant status updates"
 on public.applicants
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow zoom link reads" on public.zoom_links;
+create policy "Allow zoom link reads"
+on public.zoom_links
+for select
+to anon, authenticated
+using (is_active);
+
+drop policy if exists "Allow zoom link writes" on public.zoom_links;
+create policy "Allow zoom link writes"
+on public.zoom_links
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow zoom link updates" on public.zoom_links;
+create policy "Allow zoom link updates"
+on public.zoom_links
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow zoom link deletions" on public.zoom_links;
+create policy "Allow zoom link deletions"
+on public.zoom_links
+for delete
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow daily zoom link reads" on public.daily_zoom_links;
+create policy "Allow daily zoom link reads"
+on public.daily_zoom_links
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow daily zoom link writes" on public.daily_zoom_links;
+create policy "Allow daily zoom link writes"
+on public.daily_zoom_links
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow daily zoom link updates" on public.daily_zoom_links;
+create policy "Allow daily zoom link updates"
+on public.daily_zoom_links
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow admin settings reads" on public.admin_settings;
+create policy "Allow admin settings reads"
+on public.admin_settings
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow admin settings writes" on public.admin_settings;
+create policy "Allow admin settings writes"
+on public.admin_settings
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow admin settings updates" on public.admin_settings;
+create policy "Allow admin settings updates"
+on public.admin_settings
 for update
 to anon, authenticated
 using (true)
