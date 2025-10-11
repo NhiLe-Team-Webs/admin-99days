@@ -67,6 +67,11 @@ const columnMissing = (error: PostgrestError | null, column: string) =>
   error.code === 'PGRST204' &&
   (error.message?.toLowerCase().includes(column.toLowerCase()) ?? false);
 
+const tableMissing = (error: PostgrestError | null, table: string) =>
+  !!error &&
+  error.code === 'PGRST205' &&
+  (error.message?.toLowerCase().includes(table.toLowerCase()) ?? false);
+
 const generateUuid = () => {
   const cryptoRef = typeof globalThis !== 'undefined' ? (globalThis as { crypto?: Crypto }).crypto : undefined;
 
@@ -244,7 +249,12 @@ export const listZoomLinks = async () => {
     .eq('is_active', true)
     .order('created_at', { ascending: true });
 
-  if (error) throw error;
+  if (error) {
+    if (tableMissing(error, 'zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
   return data as ZoomLink[];
 };
 
@@ -282,7 +292,12 @@ export const getDailyZoomLinkForDate = async (date: string) => {
     .eq('scheduled_for', date)
     .maybeSingle<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
 
-  if (error) throw error;
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
   return data ? mapDailyZoomLink(data) : null;
 };
 
@@ -296,7 +311,12 @@ export const assignZoomLinkForDate = async (zoomLinkId: string, date: string) =>
     .select('*, zoom_link:zoom_links(*)')
     .single<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
 
-  if (error) throw error;
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
   return mapDailyZoomLink(data);
 };
 
@@ -308,7 +328,12 @@ export const markDailyZoomLinkSent = async (dailyZoomLinkId: string) => {
     .select('*, zoom_link:zoom_links(*)')
     .single<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
 
-  if (error) throw error;
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
   return mapDailyZoomLink(data);
 };
 
@@ -319,7 +344,13 @@ export const getAdminSettings = async (keys?: string[]) => {
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    if (tableMissing(error, 'admin_settings')) {
+      console.warn("Supabase chưa có bảng 'admin_settings'. Trả về giá trị mặc định.");
+      return [];
+    }
+    throw error;
+  }
   return data as AdminSetting[];
 };
 
