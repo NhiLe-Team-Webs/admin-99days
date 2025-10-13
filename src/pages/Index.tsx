@@ -249,7 +249,7 @@ const Index = () => {
   };
 
   const closeConfirmModal = () => {
-    setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => {} });
+    setConfirmModal({ isOpen: false, title: ", description: ", onConfirm: () => {} });
   };
 
   const handleApprove = async (id: string) => {
@@ -491,6 +491,8 @@ const Index = () => {
     }
     return formatVietnamDate(getTodayDate());
   }, [dailyZoomLink]);
+  const todaysZoomUrl = dailyZoomLink?.zoom_link?.url ?? "";
+  const hasZoomLinkForToday = Boolean(todaysZoomUrl);
 
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
@@ -518,6 +520,37 @@ const Index = () => {
           iconBgColor="bg-emerald-100"
           iconColor="text-emerald-600"
         />
+      </div>
+
+      <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900">Link Zoom ngẫu nhiên hôm nay</h3>
+            <p className="text-sm text-muted-foreground">Dành cho ngày {scheduledDateLabel}.</p>
+            {hasZoomLinkForToday ? (
+              <div className="break-all rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 font-mono text-sm text-slate-700">
+                {todaysZoomUrl}
+              </div>
+            ) : (
+              <p className="text-sm text-amber-600">
+                Chưa có link Zoom khả dụng. Hãy cập nhật trong tab Cài đặt.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button onClick={handleOpenZoomLink} disabled={!hasZoomLinkForToday}>
+              Mở Zoom
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCopyZoomLink}
+              disabled={!hasZoomLinkForToday}
+            >
+              Sao chép link Zoom
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -609,3 +642,5 @@ const Index = () => {
 };
 
 export default Index;
+
+
