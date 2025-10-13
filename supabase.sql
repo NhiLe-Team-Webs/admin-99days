@@ -1,70 +1,242 @@
--- WARNING: This schema is for context only and is not meant to be run.
--- Table order and constraints may not be valid for execution.
+-- Enable extensions required for UUID generation and cryptography helpers
+create extension if not exists "pgcrypto" with schema public;
+create extension if not exists "uuid-ossp" with schema public;
 
-CREATE TABLE public.applicants (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  email text NOT NULL UNIQUE,
-  name text NOT NULL,
-  phone text,
-  status text NOT NULL DEFAULT 'pending'::text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT applicants_pkey PRIMARY KEY (id)
+-- Shared trigger to keep updated_at in sync
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+-- Applicants captured from the public landing page
+create table if not exists public.applicants (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  ho_ten text not null,
+  so_dien_thoai text,
+  telegram text,
+  nam_sinh integer not null check (nam_sinh between 1900 and extract(year from now())::integer),
+  ly_do text,
+  dong_y boolean not null default false,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
-CREATE TABLE public.daily_workouts (
-  day_number integer NOT NULL,
-  date_for_automation date NOT NULL UNIQUE,
-  title text NOT NULL,
-  yt_link text NOT NULL,
-  is_test_day boolean NOT NULL DEFAULT false,
-  quote text,
-  CONSTRAINT daily_workouts_pkey PRIMARY KEY (day_number)
-);
-CREATE TABLE public.gratitude_logs (
-  id bigint NOT NULL DEFAULT nextval('gratitude_logs_id_seq'::regclass),
-  member_id uuid NOT NULL,
-  log_date date NOT NULL,
-  content text NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT gratitude_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT gratitude_logs_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.members(id)
-);
-CREATE TABLE public.homework_submissions (
-  id bigint NOT NULL DEFAULT nextval('homework_submissions_id_seq'::regclass),
-  member_id uuid NOT NULL,
-  day_number integer NOT NULL,
-  submission_link text NOT NULL,
-  submitted_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT homework_submissions_pkey PRIMARY KEY (id),
-  CONSTRAINT homework_submissions_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.members(id),
-  CONSTRAINT homework_submissions_day_number_fkey FOREIGN KEY (day_number) REFERENCES public.daily_workouts(day_number)
-);
-CREATE TABLE public.members (
-  id uuid NOT NULL,
-  email text UNIQUE,
-  name text,
-  status text NOT NULL DEFAULT 'active'::text,
+
+drop trigger if exists applicants_set_updated_at on public.applicants;
+create trigger applicants_set_updated_at
+before update on public.applicants
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.members (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique,
+  ho_ten text,
+  so_dien_thoai text,
+  telegram text,
+  nam_sinh integer,
+  status text not null default 'active' check (status in ('active', 'paused', 'dropped')),
   drop_reason text,
-  start_date date NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT members_pkey PRIMARY KEY (id),
-  CONSTRAINT members_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+  start_date date not null default current_date,
+  applicant_id uuid references public.applicants (id),
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
-CREATE TABLE public.progress_tracking (
-  id bigint NOT NULL DEFAULT nextval('progress_tracking_id_seq'::regclass),
-  member_id uuid NOT NULL,
-  week_number integer NOT NULL,
-  weight numeric,
-  height numeric,
-  waist numeric,
-  hips numeric,
-  chest numeric,
-  reported_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT progress_tracking_pkey PRIMARY KEY (id),
-  CONSTRAINT progress_tracking_member_id_fkey FOREIGN KEY (member_id) REFERENCES public.members(id)
+
+drop trigger if exists members_set_updated_at on public.members;
+create trigger members_set_updated_at
+before update on public.members
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.zoom_links (
+  id uuid primary key default gen_random_uuid(),
+  url text not null unique,
+  label text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
-CREATE TABLE public.settings (
-  key text NOT NULL,
-  value jsonb NOT NULL,
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT settings_pkey PRIMARY KEY (key)
+
+drop trigger if exists zoom_links_set_updated_at on public.zoom_links;
+create trigger zoom_links_set_updated_at
+before update on public.zoom_links
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.daily_zoom_links (
+  id uuid primary key default gen_random_uuid(),
+  zoom_link_id uuid not null references public.zoom_links (id) on delete cascade,
+  scheduled_for date not null unique,
+  telegram_sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
+
+drop trigger if exists daily_zoom_links_set_updated_at on public.daily_zoom_links;
+create trigger daily_zoom_links_set_updated_at
+before update on public.daily_zoom_links
+for each row
+execute function public.set_updated_at();
+
+create table if not exists public.admin_settings (
+  key text primary key,
+  value text not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists admin_settings_set_updated_at on public.admin_settings;
+create trigger admin_settings_set_updated_at
+before update on public.admin_settings
+for each row
+execute function public.set_updated_at();
+
+-- Activate Row Level Security so we can tailor access
+alter table public.applicants enable row level security;
+alter table public.members enable row level security;
+alter table public.zoom_links enable row level security;
+alter table public.daily_zoom_links enable row level security;
+alter table public.admin_settings enable row level security;
+
+-- Applicants policies -------------------------------------------------------
+drop policy if exists "Allow anonymous applicant inserts" on public.applicants;
+create policy "Allow anonymous applicant inserts"
+on public.applicants
+for insert
+to anon
+with check (true);
+
+drop policy if exists "Allow applicant lookups for landing page" on public.applicants;
+create policy "Allow applicant lookups for landing page"
+on public.applicants
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow service role to manage applicants" on public.applicants;
+create policy "Allow service role to manage applicants"
+on public.applicants
+for all
+to service_role
+using (true)
+with check (true);
+
+-- Members policies ---------------------------------------------------------
+drop policy if exists "Allow public email lookups" on public.members;
+create policy "Allow public email lookups"
+on public.members
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow public member inserts" on public.members;
+create policy "Allow public member inserts"
+on public.members
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow public member updates" on public.members;
+create policy "Allow public member updates"
+on public.members
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow service role to manage members" on public.members;
+create policy "Allow service role to manage members"
+on public.members
+for all
+to service_role
+using (true)
+with check (true);
+
+drop policy if exists "Allow applicant status updates" on public.applicants;
+create policy "Allow applicant status updates"
+on public.applicants
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow zoom link reads" on public.zoom_links;
+create policy "Allow zoom link reads"
+on public.zoom_links
+for select
+to anon, authenticated
+using (is_active);
+
+drop policy if exists "Allow zoom link writes" on public.zoom_links;
+create policy "Allow zoom link writes"
+on public.zoom_links
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow zoom link updates" on public.zoom_links;
+create policy "Allow zoom link updates"
+on public.zoom_links
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow zoom link deletions" on public.zoom_links;
+create policy "Allow zoom link deletions"
+on public.zoom_links
+for delete
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow daily zoom link reads" on public.daily_zoom_links;
+create policy "Allow daily zoom link reads"
+on public.daily_zoom_links
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow daily zoom link writes" on public.daily_zoom_links;
+create policy "Allow daily zoom link writes"
+on public.daily_zoom_links
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow daily zoom link updates" on public.daily_zoom_links;
+create policy "Allow daily zoom link updates"
+on public.daily_zoom_links
+for update
+to anon, authenticated
+using (true)
+with check (true);
+
+drop policy if exists "Allow admin settings reads" on public.admin_settings;
+create policy "Allow admin settings reads"
+on public.admin_settings
+for select
+to anon, authenticated
+using (true);
+
+drop policy if exists "Allow admin settings writes" on public.admin_settings;
+create policy "Allow admin settings writes"
+on public.admin_settings
+for insert
+to anon, authenticated
+with check (true);
+
+drop policy if exists "Allow admin settings updates" on public.admin_settings;
+create policy "Allow admin settings updates"
+on public.admin_settings
+for update
+to anon, authenticated
+using (true)
+with check (true);

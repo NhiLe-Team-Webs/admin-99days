@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users, FileText, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { TabNavigation } from "@/components/TabNavigation";
 import { StatsCard } from "@/components/StatsCard";
@@ -14,22 +16,60 @@ import {
   approveApplicant,
   updateApplicantStatus,
   removeMember,
+  listZoomLinks,
+  syncZoomLinks,
+  getDailyZoomLinkForDate,
+  assignZoomLinkForDate,
+  markDailyZoomLinkSent,
+  getAdminSettings,
+  updateAdminSettings,
 } from "@/lib/api";
-import type { Applicant as ApplicantType } from "@/components/ApplicantTable";
-import type { Member as MemberType } from "@/components/MemberTable";
+import type {
+  Applicant,
+  Member,
+  ZoomLink,
+  DailyZoomLinkWithDetails,
+} from "@/lib/api";
+import { supabase } from "@/lib/supabase";
+import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
-  { id: "applicants", label: "Đơn Đăng Ký Mới" },
-  { id: "members", label: "Tất Cả Thành Viên" },
+  { id: "applicants", label: "Đơn đăng ký mới" },
+  { id: "members", label: "Tất cả thành viên" },
   { id: "settings", label: "Cài đặt" },
 ];
+
+const sortApplicantsByNewest = (items: Applicant[]) =>
+  [...items].sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
+
+const resolveMemberTimestamp = (member: Member) =>
+  member.approved_at ?? member.start_date ?? member.created_at;
+
+const sortMembersByRecentApproval = (items: Member[]) =>
+  [...items].sort(
+    (a, b) =>
+      new Date(resolveMemberTimestamp(b)).getTime() -
+      new Date(resolveMemberTimestamp(a)).getTime()
+  );
+
+const DEFAULT_SEND_TIME = "07:00";
+const TELEGRAM_BOT_TOKEN = (import.meta.env.VITE_TELEGRAM_BOT_TOKEN ?? "").trim();
+const TELEGRAM_CHAT_ID = (import.meta.env.VITE_TELEGRAM_GROUP_ID ?? "").trim();
+const TELEGRAM_DEFAULT_SEND_TIME =
+  (import.meta.env.VITE_TELEGRAM_SEND_TIME ?? DEFAULT_SEND_TIME).trim() || DEFAULT_SEND_TIME;
+
+const getTodayDate = () => new Date().toISOString().split("T")[0];
+const formatVietnamDate = (dateString: string) => new Date(`${dateString}T00:00:00`).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+
 
 const Index = () => {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [applicants, setApplicants] = useState<ApplicantType[]>([]);
-  const [members, setMembers] = useState<MemberType[]>([]);
+  const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [confirmModal, setConfirmModal] = useState<{
@@ -44,73 +84,188 @@ const Index = () => {
     onConfirm: () => {},
   });
 
-  const [zoomLinks, setZoomLinks] = useState<string[]>([
-    "https://zoom.us/j/1111111111?pwd=DAY1",
-    "https://zoom.us/j/2222222222?pwd=DAY2",
-    "https://zoom.us/j/3333333333?pwd=DAY3",
-  ]);
-
+  const [zoomLinks, setZoomLinks] = useState<ZoomLink[]>([]);
   const [zoomLinksText, setZoomLinksText] = useState("");
+  const [dailyZoomLink, setDailyZoomLink] =
+    useState<DailyZoomLinkWithDetails | null>(null);
+  const [zoomLinksSaving, setZoomLinksSaving] = useState(false);
 
-  const fetchData = async () => {
+  const [telegramSendTime, setTelegramSendTime] = useState(TELEGRAM_DEFAULT_SEND_TIME);
+  const [telegramSaving, setTelegramSaving] = useState(false);
+  const [telegramSending, setTelegramSending] = useState(false);
+
+  const hasTelegramConfig = useMemo(
+    () => canSendTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID),
+    []
+  );
+
+  const ensureTodayZoomLink = useCallback(
+    async (availableLinks: ZoomLink[]) => {
+      if (availableLinks.length === 0) {
+        setDailyZoomLink(null);
+        return;
+      }
+
+      const today = getTodayDate();
+
+      try {
+        let daily = await getDailyZoomLinkForDate(today);
+        if (!daily || !daily.zoom_link) {
+          const randomIndex = Math.floor(Math.random() * availableLinks.length);
+          const randomLink = availableLinks[randomIndex];
+          daily = await assignZoomLinkForDate(randomLink.id, today);
+        }
+        setDailyZoomLink(daily);
+      } catch (error) {
+        console.error("Failed to resolve daily zoom link:", error);
+        toast({
+          title: "Không tạo được link Zoom hôm nay",
+          description: "Vui lòng kiểm tra danh sách link trong Cài đặt.",
+          variant: "destructive",
+        });
+      }
+    },
+    [toast]
+  );
+
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [applicantsData, membersData] = await Promise.all([
+      const [applicantsData, membersData, zoomLinkData, settingsData] = await Promise.all([
         getApplicants("pending"),
         getMembers(),
+        listZoomLinks(),
+        getAdminSettings(["telegram_send_time"]),
       ]);
-      setApplicants(applicantsData);
-      setMembers(membersData);
+
+      const memberEmails = new Set(
+        membersData.map((member) => member.email.toLowerCase())
+      );
+
+      const filteredApplicants = applicantsData.filter((applicant) => {
+        if (applicant.status && applicant.status !== "pending") {
+          return false;
+        }
+        const email = applicant.email?.toLowerCase();
+        return email ? !memberEmails.has(email) : true;
+      });
+
+      setApplicants(sortApplicantsByNewest(filteredApplicants));
+      setMembers(sortMembersByRecentApproval(membersData));
+      setZoomLinks(zoomLinkData);
+      setZoomLinksText(zoomLinkData.map((link) => link.url).join("\n"));
+
+      const settingsMap = new Map(settingsData.map((item) => [item.key, item.value]));
+      const sendTime = settingsMap.get("telegram_send_time") ?? TELEGRAM_DEFAULT_SEND_TIME;
+      setTelegramSendTime(sendTime || TELEGRAM_DEFAULT_SEND_TIME);
+
+      await ensureTodayZoomLink(zoomLinkData);
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      console.error("Failed to fetch admin data:", error);
       toast({
-        title: "Lỗi",
-        description: "Không thể tải dữ liệu từ server.",
+        title: "Không tải được dữ liệu",
+        description: "Vui lòng kiểm tra cấu hình Supabase.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [ensureTodayZoomLink, toast]);
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin-dashboard-stream")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "applicants" }, (payload) => {
+        const newApplicant = payload.new as Applicant | null;
+        if (!newApplicant || newApplicant.status !== "pending") return;
+        setApplicants((prev) =>
+          sortApplicantsByNewest([
+            newApplicant,
+            ...prev.filter((applicant) => applicant.id !== newApplicant.id),
+          ])
+        );
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "applicants" }, (payload) => {
+        const updatedApplicant = payload.new as Applicant | null;
+        if (!updatedApplicant) return;
+        setApplicants((prev) => {
+          const remaining = prev.filter((applicant) => applicant.id !== updatedApplicant.id);
+          if (updatedApplicant.status === "pending") {
+            return sortApplicantsByNewest([updatedApplicant, ...remaining]);
+          }
+          return remaining;
+        });
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "applicants" }, (payload) => {
+        const removedApplicant = payload.old as Applicant | null;
+        if (!removedApplicant) return;
+        setApplicants((prev) =>
+          prev.filter((applicant) => applicant.id !== removedApplicant.id)
+        );
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "members" }, (payload) => {
+        const newMember = payload.new as Member | null;
+        if (!newMember || newMember.status !== "active") return;
+        setMembers((prev) =>
+          sortMembersByRecentApproval([
+            newMember,
+            ...prev.filter((member) => member.id !== newMember.id),
+          ])
+        );
+        setApplicants((prev) =>
+          prev.filter((applicant) =>
+            applicant.email?.toLowerCase() !== newMember.email.toLowerCase()
+          )
+        );
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "members" }, (payload) => {
+        const updatedMember = payload.new as Member | null;
+        if (!updatedMember) return;
+        setMembers((prev) => {
+          const remaining = prev.filter((member) => member.id !== updatedMember.id);
+          if (updatedMember.status === "active") {
+            return sortMembersByRecentApproval([updatedMember, ...remaining]);
+          }
+          return remaining;
+        });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   useEffect(() => {
-    setZoomLinksText(zoomLinks.join("\n"));
+    setZoomLinksText(zoomLinks.map((link) => link.url).join("\n"));
   }, [zoomLinks]);
 
-  const showConfirmModal = (
-    title: string,
-    description: string,
-    onConfirm: () => void
-  ) => {
-    setConfirmModal({
-      isOpen: true,
-      title,
-      description,
-      onConfirm,
-    });
+  const showConfirmModal = (title: string, description: string, onConfirm: () => void) => {
+    setConfirmModal({ isOpen: true, title, description, onConfirm });
   };
 
   const closeConfirmModal = () => {
-    setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => {} });
+    setConfirmModal({ isOpen: false, title: ", description: ", onConfirm: () => {} });
   };
 
   const handleApprove = async (id: string) => {
     try {
       await approveApplicant(id);
+      setApplicants((prev) => prev.filter((applicant) => applicant.id !== id));
       toast({
-        title: "Đã duyệt thành công",
-        description: `Một thành viên mới đã được thêm.`,
+        title: "Đã duyệt",
+        description: "Hồ sơ đã được chuyển vào danh sách thành viên.",
       });
-      await fetchData(); // Refetch all data
+      await fetchData();
     } catch (error) {
       console.error("Failed to approve applicant:", error);
       toast({
         title: "Lỗi",
-        description: "Duyệt đơn thất bại.",
+        description: "Không thể duyệt đơn đăng ký.",
         variant: "destructive",
       });
     }
@@ -119,21 +274,21 @@ const Index = () => {
   const handleReject = (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận từ chối",
-      `Bạn có chắc muốn từ chối đơn của <strong>${name}</strong>?`,
+      `Bạn có chắc chắn muốn từ chối đơn của <strong>${name}</strong>?`,
       async () => {
         try {
           await updateApplicantStatus(id, "rejected");
           toast({
-            title: "Đã từ chối đơn đăng ký",
-            description: `Đơn đăng ký của ${name} đã bị từ chối.`, 
+            title: "Đã từ chối",
+            description: `Đơn đăng ký của ${name} đã được cập nhật.`,
             variant: "destructive",
           });
-          await fetchData(); // Refetch all data
+          await fetchData();
         } catch (error) {
           console.error("Failed to reject applicant:", error);
           toast({
             title: "Lỗi",
-            description: "Từ chối đơn thất bại.",
+            description: "Không thể cập nhật trạng thái đơn đăng ký.",
             variant: "destructive",
           });
         } finally {
@@ -146,21 +301,21 @@ const Index = () => {
   const handleRemoveMember = (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận loại bỏ",
-      `Bạn có chắc muốn loại bỏ thành viên <strong>${name}</strong>?`,
+      `Bạn chắc chắn muốn loại bỏ <strong>${name}</strong> khỏi chương trình?`,
       async () => {
         try {
           await removeMember(id);
           toast({
-            title: "Đã loại bỏ thành viên",
-            description: `${name} đã được loại bỏ khỏi danh sách thành viên.`, 
+            title: "Đã loại thành viên",
+            description: `Đã loại bỏ ${name} khỏi danh sách thành viên.`,
             variant: "destructive",
           });
-          await fetchData(); // Refetch all data
+          await fetchData();
         } catch (error) {
           console.error("Failed to remove member:", error);
           toast({
             title: "Lỗi",
-            description: "Loại bỏ thành viên thất bại.",
+            description: "Không thể cập nhật danh sách thành viên.",
             variant: "destructive",
           });
         } finally {
@@ -170,19 +325,174 @@ const Index = () => {
     );
   };
 
-  const handleUpdateZoomLinks = () => {
-    const links = zoomLinksText
-      .split("\n")
-      .map((link) => link.trim())
-      .filter((link) => link.length > 0);
-    setZoomLinks(links);
-    toast({
-      title: "Cập nhật thành công",
-      description: `Đã lưu thành công ${links.length} link Zoom!`, 
-    });
+  const handleUpdateZoomLinks = async () => {
+    try {
+      setZoomLinksSaving(true);
+      const updatedLinks = await syncZoomLinks(zoomLinksText.split("\n"));
+      setZoomLinks(updatedLinks);
+      toast({
+        title: "Đã lưu danh sách Zoom",
+        description: `Đã cập nhật  đường link.`,
+      });
+      await ensureTodayZoomLink(updatedLinks);
+    } catch (error) {
+      console.error("Failed to update zoom links:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể lưu danh sách link Zoom.",
+        variant: "destructive",
+      });
+    } finally {
+      setZoomLinksSaving(false);
+    }
   };
 
-  const todayZoomLink = zoomLinks.length > 0 ? zoomLinks[0] : "Chưa có link nào được thiết lập.";
+  const handleSaveTelegramSettings = async () => {
+    if (!/^\d{2}:\d{2}$/.test(telegramSendTime)) {
+      toast({
+        title: "Giờ gửi không hợp lệ",
+        description: "Vui lòng nhập giờ theo định dạng HH:MM.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setTelegramSaving(true);
+      await updateAdminSettings({ telegram_send_time: telegramSendTime });
+      toast({
+        title: "Đã cập nhật giờ gửi",
+        description: "Bot sẽ gửi link đúng giờ mới thiết lập.",
+      });
+    } catch (error) {
+      console.error("Failed to save telegram time:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể lưu giờ gửi tự động.",
+        variant: "destructive",
+      });
+    } finally {
+      setTelegramSaving(false);
+    }
+  };
+
+  const handleOpenZoomLink = useCallback(() => {
+    const url = dailyZoomLink?.zoom_link?.url;
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [dailyZoomLink]);
+
+  const handleCopyZoomLink = useCallback(async () => {
+    const url = dailyZoomLink?.zoom_link?.url;
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({
+        title: "Đã sao chép link Zoom",
+        description: "Bạn có thể gửi link cho thành viên ngay bây giờ.",
+      });
+    } catch (error) {
+      console.error("Failed to copy zoom link:", error);
+      toast({
+        title: "Không thể sao chép",
+        description: "Trình duyệt không hỗ trợ sao chép tự động.",
+        variant: "destructive",
+      });
+    }
+  }, [dailyZoomLink, toast]);
+
+  const handleSendToTelegram = useCallback(async () => {
+    if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
+      toast({
+        title: "Chưa có link Zoom",
+        description: "Hãy thêm ít nhất một link trong phần Cài đặt.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (telegramSending || !hasTelegramConfig) {
+      return;
+    }
+
+    const message = `Link Zoom cho ngày ${formatVietnamDate(dailyZoomLink.scheduled_for)}:\n${dailyZoomLink.zoom_link.url}`;
+
+    try {
+      setTelegramSending(true);
+      await sendTelegramMessage({
+        token: TELEGRAM_BOT_TOKEN,
+        chatId: TELEGRAM_CHAT_ID,
+        text: message,
+      });
+      const updated = await markDailyZoomLinkSent(dailyZoomLink.id);
+      setDailyZoomLink(updated);
+      toast({
+        title: "Đã gửi lên Telegram",
+        description: "Link Zoom ngày hôm nay đã được gửi tự động.",
+      });
+    } catch (error) {
+      console.error("Failed to send telegram message:", error);
+      toast({
+        title: "Lỗi",
+        description: "Không thể gửi tin nhắn Telegram.",
+        variant: "destructive",
+      });
+    } finally {
+      setTelegramSending(false);
+    }
+  }, [dailyZoomLink, hasTelegramConfig, telegramSending, toast]);
+
+  useEffect(() => {
+    if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
+      return;
+    }
+
+    if (dailyZoomLink.telegram_sent_at) {
+      return;
+    }
+
+    if (!hasTelegramConfig) {
+      return;
+    }
+
+    if (!/^\d{2}:\d{2}$/.test(telegramSendTime)) {
+      return;
+    }
+
+    const [hourStr, minuteStr] = telegramSendTime.split(":");
+    const hours = Number(hourStr);
+    const minutes = Number(minuteStr);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return;
+    }
+
+    const scheduledAt = new Date(`${dailyZoomLink.scheduled_for}T00:00:00`);
+    scheduledAt.setHours(hours, minutes, 0, 0);
+
+    const now = new Date();
+    const delay = scheduledAt.getTime() - now.getTime();
+
+    if (delay <= 0) {
+      void handleSendToTelegram();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void handleSendToTelegram();
+    }, delay);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [dailyZoomLink, telegramSendTime, hasTelegramConfig, handleSendToTelegram]);
+
+  const scheduledDateLabel = useMemo(() => {
+    if (dailyZoomLink?.scheduled_for) {
+      return formatVietnamDate(dailyZoomLink.scheduled_for);
+    }
+    return formatVietnamDate(getTodayDate());
+  }, [dailyZoomLink]);
+  const todaysZoomUrl = dailyZoomLink?.zoom_link?.url ?? "";
+  const hasZoomLinkForToday = Boolean(todaysZoomUrl);
 
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
@@ -193,44 +503,69 @@ const Index = () => {
           title="Tổng thành viên"
           value={members.length}
           icon={Users}
-          iconBgColor="bg-primary-light"
-          iconColor="text-primary"
+          iconBgColor="bg-orange-100"
+          iconColor="text-orange-600"
         />
         <StatsCard
-          title="Đơn đăng ký mới"
+          title="Đơn chờ duyệt"
           value={applicants.length}
           icon={FileText}
-          iconBgColor="bg-info-light"
-          iconColor="text-info"
+          iconBgColor="bg-sky-100"
+          iconColor="text-sky-600"
         />
         <StatsCard
-          title="Link Zoom còn lại"
+          title="Link Zoom đang lưu"
           value={zoomLinks.length}
           icon={Link2}
-          iconBgColor="bg-success-light"
-          iconColor="text-success"
+          iconBgColor="bg-emerald-100"
+          iconColor="text-emerald-600"
         />
       </div>
-      <div className="bg-card p-6 rounded-xl shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Link Zoom cho ngày hôm nay</h2>
-        <p className="text-lg text-primary font-semibold bg-muted p-4 rounded-md">
-          {todayZoomLink}
-        </p>
+
+      <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-slate-900">Link Zoom ngẫu nhiên hôm nay</h3>
+            <p className="text-sm text-muted-foreground">Dành cho ngày {scheduledDateLabel}.</p>
+            {hasZoomLinkForToday ? (
+              <div className="break-all rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 font-mono text-sm text-slate-700">
+                {todaysZoomUrl}
+              </div>
+            ) : (
+              <p className="text-sm text-amber-600">
+                Chưa có link Zoom khả dụng. Hãy cập nhật trong tab Cài đặt.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button onClick={handleOpenZoomLink} disabled={!hasZoomLinkForToday}>
+              Mở Zoom
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCopyZoomLink}
+              disabled={!hasZoomLinkForToday}
+            >
+              Sao chép link Zoom
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="bg-card shadow-sm">
-        <div className="container mx-auto px-6 py-4">
-          <h1 className="text-2xl font-bold text-foreground">
-            <span className="text-primary">Admin Panel</span> - 99 Days Challenge
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200">
+        <div className="container mx-auto px-6 py-5">
+          <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">
+            Bảng điều khiển quản trị
           </h1>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-8 space-y-8">
         <TabNavigation tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
         {activeTab === "dashboard" && dashboardContent}
@@ -238,31 +573,59 @@ const Index = () => {
         {activeTab === "applicants" && (
           <ApplicantTable
             applicants={applicants}
+            isLoading={loading}
             onApprove={handleApprove}
             onReject={handleReject}
           />
         )}
 
-        {activeTab === "members" && (
-          <MemberTable members={members} onRemove={handleRemoveMember} />
-        )}
+        {activeTab === "members" &&
+          (loading ? (
+            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 text-center text-muted-foreground">
+              Đang tải danh sách thành viên...
+            </div>
+          ) : (
+            <MemberTable members={members} onRemove={handleRemoveMember} />
+          ))}
 
         {activeTab === "settings" && (
-          <div className="bg-card p-6 rounded-xl shadow-lg">
-            <h2 className="text-xl font-bold mb-4">Quản lý Danh sách Link Zoom</h2>
-            <Textarea
-              rows={15}
-              value={zoomLinksText}
-              onChange={(e) => setZoomLinksText(e.target.value)}
-              placeholder="Dán danh sách link, mỗi link một dòng..."
-              className="w-full mb-4"
-            />
-            <Button
-              onClick={handleUpdateZoomLinks}
-              className="w-full bg-primary text-primary-foreground hover:bg-primary-hover font-semibold"
-            >
-              Lưu Danh Sách Link
-            </Button>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
+              <p className="text-sm text-muted-foreground">
+                Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
+              </p>
+              <Textarea
+                rows={12}
+                value={zoomLinksText}
+                onChange={(e) => setZoomLinksText(e.target.value)}
+                placeholder="https://zoom.us/j/..."
+                className="font-mono"
+              />
+              <Button onClick={handleUpdateZoomLinks} disabled={zoomLinksSaving}>
+                {zoomLinksSaving ? "Đang lưu..." : "Lưu danh sách"}
+              </Button>
+            </div>
+
+            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-slate-900">Giờ gửi Telegram</h3>
+              <div className="space-y-2">
+                <Label htmlFor="telegram-send-time">Giờ gửi tự động (HH:MM)</Label>
+                <Input
+                  id="telegram-send-time"
+                  type="time"
+                  value={telegramSendTime}
+                  onChange={(e) => setTelegramSendTime(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={handleSaveTelegramSettings}
+                disabled={telegramSaving}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white transition-colors duration-300"
+              >
+                {telegramSaving ? "Đang lưu giờ gửi..." : "Thêm giờ gửi"}
+              </Button>
+            </div>
           </div>
         )}
       </main>
@@ -279,3 +642,5 @@ const Index = () => {
 };
 
 export default Index;
+
+

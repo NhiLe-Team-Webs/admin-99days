@@ -1,46 +1,19 @@
-import { useEffect, useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { getApplicants } from '@/lib/api';
-
-export interface Applicant {
-  id: string;
-  ho_ten: string;
-  email: string;
-  telegram: string;
-  ly_do: string;
-}
+import type { Applicant } from '@/lib/api';
+import { Button } from '@/components/ui/button';
 
 interface ApplicantTableProps {
+  applicants: Applicant[];
+  isLoading: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string, name: string) => void;
 }
 
-export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => {
-  const [applicants, setApplicants] = useState<Applicant[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchApplicants = async () => {
-      try {
-        const data = await getApplicants('pending');
-        setApplicants(data);
-      } catch (error) {
-        console.error('Failed to fetch applicants:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchApplicants();
-  }, []);
-
-  if (loading) {
+export const ApplicantTable = ({ applicants, isLoading, onApprove, onReject }: ApplicantTableProps) => {
+  if (isLoading) {
     return (
       <div className="bg-card p-6 rounded-xl shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Duyệt Đơn Đăng Ký Mới</h2>
-        <div className="text-center py-8 text-muted-foreground">
-          Đang tải danh sách...
-        </div>
+        <h2 className="text-xl font-bold mb-4">Duyệt đơn đăng ký mới</h2>
+        <div className="text-center py-8 text-muted-foreground">Đang tải danh sách...</div>
       </div>
     );
   }
@@ -48,17 +21,15 @@ export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => 
   if (applicants.length === 0) {
     return (
       <div className="bg-card p-6 rounded-xl shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Duyệt Đơn Đăng Ký Mới</h2>
-        <div className="text-center py-8 text-muted-foreground">
-          Không có đơn đăng ký mới.
-        </div>
+        <h2 className="text-xl font-bold mb-4">Duyệt đơn đăng ký mới</h2>
+        <div className="text-center py-8 text-muted-foreground">Không có đơn đăng ký mới.</div>
       </div>
     );
   }
 
   return (
     <div className="bg-card p-6 rounded-xl shadow-lg">
-      <h2 className="text-xl font-bold mb-4">Duyệt Đơn Đăng Ký Mới</h2>
+      <h2 className="text-xl font-bold mb-4">Duyệt đơn đăng ký mới</h2>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted">
@@ -90,10 +61,10 @@ export const ApplicantTable = ({ onApprove, onReject }: ApplicantTableProps) => 
                   <div className="text-sm text-foreground">{applicant.email}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <div className="text-sm text-muted-foreground">{applicant.telegram}</div>
+                  <div className="text-sm text-muted-foreground">{applicant.telegram ?? '—'}</div>
                 </td>
                 <td className="px-6 py-4 text-sm text-muted-foreground max-w-xs">
-                  <div className="truncate">{applicant.ly_do}</div>
+                  <div className="truncate">{applicant.ly_do ?? '—'}</div>
                 </td>
                 <td className="px-6 py-4 text-center space-x-2">
                   <Button
