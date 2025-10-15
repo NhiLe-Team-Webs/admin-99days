@@ -240,3 +240,144 @@ for update
 to anon, authenticated
 using (true)
 with check (true);
+
+-- Gratitude journal entries -------------------------------------------------
+create table if not exists public.gratitude_entries (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.members (id) on delete cascade,
+  entry_date date not null,
+  gratitude text not null,
+  highlight text,
+  intention text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint gratitude_unique_per_day unique (member_id, entry_date)
+);
+
+drop trigger if exists gratitude_entries_set_updated_at on public.gratitude_entries;
+create trigger gratitude_entries_set_updated_at
+before update on public.gratitude_entries
+for each row
+execute function public.set_updated_at();
+
+alter table public.gratitude_entries enable row level security;
+
+drop policy if exists "Members manage their gratitude" on public.gratitude_entries;
+create policy "Members manage their gratitude"
+on public.gratitude_entries
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.gratitude_entries.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.gratitude_entries.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+);
+
+create index if not exists gratitude_entries_member_date_idx
+  on public.gratitude_entries (member_id, entry_date);
+
+-- Homework submissions ------------------------------------------------------
+create table if not exists public.homework_submissions (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.members (id) on delete cascade,
+  submission_date date not null,
+  lesson text not null,
+  submission text not null,
+  mentor_notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint homework_unique_per_day unique (member_id, submission_date)
+);
+
+drop trigger if exists homework_submissions_set_updated_at on public.homework_submissions;
+create trigger homework_submissions_set_updated_at
+before update on public.homework_submissions
+for each row
+execute function public.set_updated_at();
+
+alter table public.homework_submissions enable row level security;
+
+drop policy if exists "Members manage their homework" on public.homework_submissions;
+create policy "Members manage their homework"
+on public.homework_submissions
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.homework_submissions.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.homework_submissions.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+);
+
+create index if not exists homework_submissions_member_date_idx
+  on public.homework_submissions (member_id, submission_date);
+
+-- Progress tracking ---------------------------------------------------------
+create table if not exists public.progress_updates (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.members (id) on delete cascade,
+  recorded_at timestamptz not null default now(),
+  recorded_for date not null default current_date,
+  weight numeric(5,2) not null,
+  height numeric(5,2) not null,
+  note text,
+  photo_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint progress_unique_per_day unique (member_id, recorded_for)
+);
+
+drop trigger if exists progress_updates_set_updated_at on public.progress_updates;
+create trigger progress_updates_set_updated_at
+before update on public.progress_updates
+for each row
+execute function public.set_updated_at();
+
+alter table public.progress_updates enable row level security;
+
+drop policy if exists "Members manage their progress" on public.progress_updates;
+create policy "Members manage their progress"
+on public.progress_updates
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.progress_updates.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.progress_updates.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+);
+
+create index if not exists progress_updates_member_date_idx
+  on public.progress_updates (member_id, recorded_for desc);
+
