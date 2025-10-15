@@ -13,7 +13,7 @@ import { AlertTriangle } from "lucide-react";
 interface ConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   title: string;
   description: string;
 }
@@ -26,7 +26,14 @@ export const ConfirmationModal = ({
   description,
 }: ConfirmationModalProps) => {
   return (
-    <AlertDialog open={isOpen} onOpenChange={onClose}>
+    <AlertDialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-center gap-3">

@@ -93,6 +93,11 @@ create table if not exists public.admin_settings (
   updated_at timestamptz not null default now()
 );
 
+-- Seed mặc định cho ngày bắt đầu chương trình (có thể cập nhật lại từ giao diện quản trị)
+insert into public.admin_settings (key, value)
+values ('program_start_date', current_date::text)
+on conflict (key) do nothing;
+
 drop trigger if exists admin_settings_set_updated_at on public.admin_settings;
 create trigger admin_settings_set_updated_at
 before update on public.admin_settings
