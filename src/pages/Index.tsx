@@ -76,7 +76,7 @@ const Index = () => {
     isOpen: boolean;
     title: string;
     description: string;
-    onConfirm: () => void;
+    onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
     title: "",
@@ -93,6 +93,9 @@ const Index = () => {
   const [telegramSendTime, setTelegramSendTime] = useState(TELEGRAM_DEFAULT_SEND_TIME);
   const [telegramSaving, setTelegramSaving] = useState(false);
   const [telegramSending, setTelegramSending] = useState(false);
+  const [programStartDate, setProgramStartDate] = useState("");
+  const [programStartDateDraft, setProgramStartDateDraft] = useState("");
+  const [programStartDateSaving, setProgramStartDateSaving] = useState(false);
 
   const hasTelegramConfig = useMemo(
     () => canSendTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID),
@@ -135,7 +138,7 @@ const Index = () => {
         getApplicants("pending"),
         getMembers(),
         listZoomLinks(),
-        getAdminSettings(["telegram_send_time"]),
+        getAdminSettings(["telegram_send_time", "program_start_date"]),
       ]);
 
       const memberEmails = new Set(
@@ -158,6 +161,10 @@ const Index = () => {
       const settingsMap = new Map(settingsData.map((item) => [item.key, item.value]));
       const sendTime = settingsMap.get("telegram_send_time") ?? TELEGRAM_DEFAULT_SEND_TIME;
       setTelegramSendTime(sendTime || TELEGRAM_DEFAULT_SEND_TIME);
+
+      const startDate = settingsMap.get("program_start_date") ?? "";
+      setProgramStartDate(startDate);
+      setProgramStartDateDraft(startDate);
 
       await ensureTodayZoomLink(zoomLinkData);
     } catch (error) {
@@ -244,12 +251,16 @@ const Index = () => {
     setZoomLinksText(zoomLinks.map((link) => link.url).join("\n"));
   }, [zoomLinks]);
 
-  const showConfirmModal = (title: string, description: string, onConfirm: () => void) => {
+  const showConfirmModal = (
+    title: string,
+    description: string,
+    onConfirm: () => void | Promise<void>
+  ) => {
     setConfirmModal({ isOpen: true, title, description, onConfirm });
   };
 
   const closeConfirmModal = () => {
-    setConfirmModal({ isOpen: false, title: ", description: ", onConfirm: () => {} });
+    setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => {} });
   };
 
   const handleApprove = async (id: string) => {
@@ -493,6 +504,54 @@ const Index = () => {
   }, [dailyZoomLink]);
   const todaysZoomUrl = dailyZoomLink?.zoom_link?.url ?? "";
   const hasZoomLinkForToday = Boolean(todaysZoomUrl);
+  const isProgramStartDateChanged = programStartDateDraft !== programStartDate;
+  const formattedProgramStartDate = useMemo(() => {
+    if (!programStartDate) {
+      return "";
+    }
+    return formatVietnamDate(programStartDate);
+  }, [programStartDate]);
+
+  const handleSaveProgramStartDate = () => {
+    if (!programStartDateDraft) {
+      toast({
+        title: "Ngày bắt đầu không hợp lệ",
+        description: "Vui lòng chọn ngày trước khi lưu.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formattedDate = formatVietnamDate(programStartDateDraft);
+
+    showConfirmModal(
+      "Xác nhận cập nhật ngày bắt đầu",
+      `Bạn có chắc chắn muốn thiết lập ngày bắt đầu là <strong>${formattedDate}</strong>?`,
+      async () => {
+        const newStartDate = programStartDateDraft;
+
+        try {
+          setProgramStartDateSaving(true);
+          await updateAdminSettings({ program_start_date: newStartDate });
+          setProgramStartDate(newStartDate);
+          toast({
+            title: "Đã cập nhật ngày bắt đầu",
+            description: "Thông tin ngày bắt đầu chương trình đã được lưu lại.",
+          });
+        } catch (error) {
+          console.error("Failed to save program start date:", error);
+          toast({
+            title: "Lỗi",
+            description: "Không thể lưu ngày bắt đầu. Vui lòng thử lại.",
+            variant: "destructive",
+          });
+        } finally {
+          setProgramStartDateSaving(false);
+          closeConfirmModal();
+        }
+      }
+    );
+  };
 
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
@@ -588,11 +647,11 @@ const Index = () => {
             <MemberTable members={members} onRemove={handleRemoveMember} />
           ))}
 
-        {activeTab === "settings" && (
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
-              <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
-              <p className="text-sm text-muted-foreground">
+          {activeTab === "settings" && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+                <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
+                <p className="text-sm text-muted-foreground">
                 Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
               </p>
               <Textarea
@@ -626,6 +685,38 @@ const Index = () => {
                 {telegramSaving ? "Đang lưu giờ gửi..." : "Thêm giờ gửi"}
               </Button>
             </div>
+
+            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-slate-900">Ngày bắt đầu chương trình</h3>
+              <p className="text-sm text-muted-foreground">
+                Chọn ngày chính thức bắt đầu để đồng bộ với các hệ thống khác.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="program-start-date">Ngày bắt đầu</Label>
+                <Input
+                  id="program-start-date"
+                  type="date"
+                  value={programStartDateDraft}
+                  onChange={(e) => setProgramStartDateDraft(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={handleSaveProgramStartDate}
+                disabled={!isProgramStartDateChanged || programStartDateSaving || !programStartDateDraft}
+                className="w-full sm:w-auto"
+              >
+                {programStartDateSaving
+                  ? "Đang lưu ngày bắt đầu..."
+                  : programStartDate
+                  ? "Cập nhật ngày bắt đầu"
+                  : "Lưu ngày bắt đầu"}
+              </Button>
+              {formattedProgramStartDate && (
+                <p className="text-sm text-muted-foreground">
+                  Ngày đang áp dụng: <span className="font-medium text-slate-900">{formattedProgramStartDate}</span>
+                </p>
+              )}
+            </div>
           </div>
         )}
       </main>
@@ -642,5 +733,4 @@ const Index = () => {
 };
 
 export default Index;
-
 

@@ -1,5 +1,5 @@
-import type { PostgrestError } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import type { AuthError, PostgrestError } from '@supabase/supabase-js';
+import { supabase, supabaseAdmin } from './supabase';
 
 export interface Applicant {
   id: string;
@@ -85,6 +85,45 @@ const generateUuid = () => {
     const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
     return value.toString(16);
   });
+};
+
+const memberAppBaseUrl = (import.meta.env.VITE_MEMBER_APP_URL ?? '').replace(/\/$/, '');
+const passwordResetRedirect = memberAppBaseUrl ? `${memberAppBaseUrl}/reset-password` : undefined;
+
+const isAlreadyRegisteredError = (error: AuthError | null) =>
+  !!error && error.status === 400 && error.message?.toLowerCase().includes('already registered');
+
+const provisionAuthAccount = async (applicant: Applicant) => {
+  if (!supabaseAdmin) {
+    console.warn('Supabase service role key missing: skip auth user provisioning.');
+    return;
+  }
+
+  try {
+    const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(applicant.email, {
+      data: applicant.ho_ten ? { ho_ten: applicant.ho_ten } : undefined
+    });
+
+    if (!inviteError) {
+      return; // Invitation email already sent by Supabase
+    }
+
+    if (isAlreadyRegisteredError(inviteError)) {
+      if (passwordResetRedirect) {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(applicant.email, {
+          redirectTo: passwordResetRedirect
+        });
+        if (resetError) {
+          console.warn('Failed to send password reset email for existing member:', resetError);
+        }
+      }
+      return;
+    }
+
+    console.warn('Failed to invite applicant via Supabase Auth:', inviteError);
+  } catch (error) {
+    console.error('Unexpected error while provisioning Supabase auth account:', error);
+  }
 };
 
 // Lấy danh sách ứng viên theo trạng thái
@@ -208,6 +247,8 @@ export const approveApplicant = async (applicantId: string) => {
       throw updateError;
     }
   }
+
+  await provisionAuthAccount(applicant);
 
   const { error: deleteError } = await supabase
     .from('applicants')
