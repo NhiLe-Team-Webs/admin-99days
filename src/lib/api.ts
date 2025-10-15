@@ -32,12 +32,45 @@ export interface Member {
   updated_at?: string | null;
 }
 
+export interface ZoomLink {
+  id: string;
+  url: string;
+  label: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyZoomLink {
+  id: string;
+  zoom_link_id: string;
+  scheduled_for: string;
+  telegram_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyZoomLinkWithDetails extends DailyZoomLink {
+  zoom_link: ZoomLink | null;
+}
+
+export interface AdminSetting {
+  key: string;
+  value: string;
+  updated_at: string;
+}
+
 const nowIso = () => new Date().toISOString();
 
 const columnMissing = (error: PostgrestError | null, column: string) =>
   !!error &&
   error.code === 'PGRST204' &&
   (error.message?.toLowerCase().includes(column.toLowerCase()) ?? false);
+
+const tableMissing = (error: PostgrestError | null, table: string) =>
+  !!error &&
+  error.code === 'PGRST205' &&
+  (error.message?.toLowerCase().includes(table.toLowerCase()) ?? false);
 
 const generateUuid = () => {
   const cryptoRef = typeof globalThis !== 'undefined' ? (globalThis as { crypto?: Crypto }).crypto : undefined;
@@ -238,6 +271,142 @@ export const getMembers = async () => {
 
   if (error) throw error;
   return data as Member[];
+};
+
+const mapDailyZoomLink = (entry: DailyZoomLink & { zoom_link?: ZoomLink | null }): DailyZoomLinkWithDetails => ({
+  id: entry.id,
+  zoom_link_id: entry.zoom_link_id,
+  scheduled_for: entry.scheduled_for,
+  telegram_sent_at: entry.telegram_sent_at,
+  created_at: entry.created_at,
+  updated_at: entry.updated_at,
+  zoom_link: entry.zoom_link ?? null
+});
+
+export const listZoomLinks = async () => {
+  const { data, error } = await supabase
+    .from('zoom_links')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (tableMissing(error, 'zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
+  return data as ZoomLink[];
+};
+
+export const syncZoomLinks = async (links: string[]) => {
+  const uniqueLinks = Array.from(new Set(links.map((link) => link.trim()).filter((link) => link.length > 0)));
+  const currentLinks = await listZoomLinks();
+  const currentByUrl = new Map(currentLinks.map((link) => [link.url, link] as const));
+
+  const linksToDelete = currentLinks.filter((link) => !uniqueLinks.includes(link.url));
+  if (linksToDelete.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('zoom_links')
+      .delete()
+      .in('id', linksToDelete.map((link) => link.id));
+
+    if (deleteError) throw deleteError;
+  }
+
+  const linksToInsert = uniqueLinks
+    .filter((link) => !currentByUrl.has(link))
+    .map((url) => ({ url, is_active: true }));
+
+  if (linksToInsert.length > 0) {
+    const { error: insertError } = await supabase.from('zoom_links').insert(linksToInsert);
+    if (insertError) throw insertError;
+  }
+
+  return listZoomLinks();
+};
+
+export const getDailyZoomLinkForDate = async (date: string) => {
+  const { data, error } = await supabase
+    .from('daily_zoom_links')
+    .select('*, zoom_link:zoom_links(*)')
+    .eq('scheduled_for', date)
+    .maybeSingle<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
+
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
+  return data ? mapDailyZoomLink(data) : null;
+};
+
+export const assignZoomLinkForDate = async (zoomLinkId: string, date: string) => {
+  const { data, error } = await supabase
+    .from('daily_zoom_links')
+    .upsert(
+      { zoom_link_id: zoomLinkId, scheduled_for: date, telegram_sent_at: null },
+      { onConflict: 'scheduled_for' }
+    )
+    .select('*, zoom_link:zoom_links(*)')
+    .single<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
+
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
+  return mapDailyZoomLink(data);
+};
+
+export const markDailyZoomLinkSent = async (dailyZoomLinkId: string) => {
+  const { data, error } = await supabase
+    .from('daily_zoom_links')
+    .update({ telegram_sent_at: nowIso() })
+    .eq('id', dailyZoomLinkId)
+    .select('*, zoom_link:zoom_links(*)')
+    .single<DailyZoomLink & { zoom_link?: ZoomLink | null }>();
+
+  if (error) {
+    if (tableMissing(error, 'daily_zoom_links')) {
+      throw new Error("Supabase chưa có bảng 'daily_zoom_links'. Vui lòng chạy script supabase.sql để tạo bảng.");
+    }
+    throw error;
+  }
+  return mapDailyZoomLink(data);
+};
+
+export const getAdminSettings = async (keys?: string[]) => {
+  let query = supabase.from('admin_settings').select('*');
+  if (keys && keys.length > 0) {
+    query = query.in('key', keys);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    if (tableMissing(error, 'admin_settings')) {
+      console.warn("Supabase chưa có bảng 'admin_settings'. Trả về giá trị mặc định.");
+      return [];
+    }
+    throw error;
+  }
+  return data as AdminSetting[];
+};
+
+export const updateAdminSettings = async (settings: Record<string, string>) => {
+  const entries = Object.entries(settings)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => ({ key, value }));
+
+  if (entries.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase.from('admin_settings').upsert(entries).select('*');
+  if (error) throw error;
+  return data as AdminSetting[];
 };
 
 // Đánh dấu thành viên bị loại

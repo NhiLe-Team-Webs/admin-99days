@@ -35,3 +35,4 @@
 - Them phan quyen dang nhap admin va nhat ky hoat dong cho cac thao tac duyet/xoa.
 - Bo sung bo loc va tim kiem nang cao tren bang applicants/members.
 - Tich hop tu dong gui email/Telegram khi duyet hoac cap nhat link Zoom.
+
