@@ -1,6 +1,27 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users, FileText, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  approveApplicant,
+  assignZoomLinkForDate,
+  checkAndDropInactiveMembers,
+  dropMember,
+  getAdminSettings,
+  getApplicants,
+  getDailyZoomLinkForDate,
+  getMembers,
+  listZoomLinks,
+  markDailyZoomLinkSent,
+  syncZoomLinks,
+  updateAdminSettings,
+  updateApplicantStatus,
+} from "@/lib/api";
+import type {
+  Applicant,
+  DailyZoomLinkWithDetails,
+  Member,
+  ZoomLink,
+} from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,28 +31,14 @@ import { StatsCard } from "@/components/StatsCard";
 import { ApplicantTable } from "@/components/ApplicantTable";
 import { MemberTable } from "@/components/MemberTable";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import {
-  getApplicants,
-  getMembers,
-  approveApplicant,
-  updateApplicantStatus,
-  removeMember,
-  listZoomLinks,
-  syncZoomLinks,
-  getDailyZoomLinkForDate,
-  assignZoomLinkForDate,
-  markDailyZoomLinkSent,
-  getAdminSettings,
-  updateAdminSettings,
-} from "@/lib/api";
-import type {
-  Applicant,
-  Member,
-  ZoomLink,
-  DailyZoomLinkWithDetails,
-} from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
+import { StatusFilter } from "@/components/StatusFilter";
+
+interface StatusFilterProps {
+  value: "all" | "active" | "dropped";
+  onChange: (value: "all" | "active" | "dropped") => void;
+}
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
@@ -71,6 +78,7 @@ const Index = () => {
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "dropped">("all");
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -81,7 +89,7 @@ const Index = () => {
     isOpen: false,
     title: "",
     description: "",
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const [zoomLinks, setZoomLinks] = useState<ZoomLink[]>([]);
@@ -128,7 +136,7 @@ const Index = () => {
         });
       }
     },
-    [toast]
+    [assignZoomLinkForDate, getDailyZoomLinkForDate, toast]
   );
 
   const fetchData = useCallback(async () => {
@@ -136,7 +144,7 @@ const Index = () => {
     try {
       const [applicantsData, membersData, zoomLinkData, settingsData] = await Promise.all([
         getApplicants("pending"),
-        getMembers(),
+        getMembers(statusFilter === "all" ? undefined : statusFilter),
         listZoomLinks(),
         getAdminSettings(["telegram_send_time", "program_start_date"]),
       ]);
@@ -177,7 +185,7 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  }, [ensureTodayZoomLink, toast]);
+  }, [approveApplicant, assignZoomLinkForDate, checkAndDropInactiveMembers, dropMember, getAdminSettings, getApplicants, getDailyZoomLinkForDate, getMembers, listZoomLinks, markDailyZoomLinkSent, sortApplicantsByNewest, sortMembersByRecentApproval, syncZoomLinks, toast, updateAdminSettings, updateApplicantStatus, statusFilter]);
 
   useEffect(() => {
     fetchData();
@@ -245,7 +253,7 @@ const Index = () => {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [sortMembersByRecentApproval]);
 
   useEffect(() => {
     setZoomLinksText(zoomLinks.map((link) => link.url).join("\n"));
@@ -260,7 +268,7 @@ const Index = () => {
   };
 
   const closeConfirmModal = () => {
-    setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => {} });
+    setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => { } });
   };
 
   const handleApprove = async (id: string) => {
@@ -282,7 +290,7 @@ const Index = () => {
     }
   };
 
-  const handleReject = (id: string, name: string) => {
+  const handleReject = async (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận từ chối",
       `Bạn có chắc chắn muốn từ chối đơn của <strong>${name}</strong>?`,
@@ -309,21 +317,21 @@ const Index = () => {
     );
   };
 
-  const handleRemoveMember = (id: string, name: string) => {
+  const handleRemoveMember = (id: string, reason: string) => {
     showConfirmModal(
       "Xác nhận loại bỏ",
-      `Bạn chắc chắn muốn loại bỏ <strong>${name}</strong> khỏi chương trình?`,
+      `Bạn chắc chắn muốn loại bỏ thành viên này khỏi chương trình?`,
       async () => {
         try {
-          await removeMember(id);
+          await dropMember(id, reason);
           toast({
-            title: "Đã loại thành viên",
+            title: "Đã loại bỏ thành viên",
             description: `Đã loại bỏ ${name} khỏi danh sách thành viên.`,
             variant: "destructive",
           });
           await fetchData();
         } catch (error) {
-          console.error("Failed to remove member:", error);
+          console.error("Failed to drop member:", error);
           toast({
             title: "Lỗi",
             description: "Không thể cập nhật danh sách thành viên.",
@@ -535,7 +543,7 @@ const Index = () => {
           await updateAdminSettings({ program_start_date: newStartDate });
           setProgramStartDate(newStartDate);
           toast({
-            title: "Đã cập nhật ngày bắt đầu",
+            title: "Đã cập nhật giờ bắt đầu",
             description: "Thông tin ngày bắt đầu chương trình đã được lưu lại.",
           });
         } catch (error) {
@@ -638,19 +646,26 @@ const Index = () => {
           />
         )}
 
-        {activeTab === "members" &&
-          (loading ? (
+        {activeTab === "members" && (
+          loading ? (
             <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 text-center text-muted-foreground">
               Đang tải danh sách thành viên...
             </div>
           ) : (
-            <MemberTable members={members} onRemove={handleRemoveMember} />
-          ))}
+            <>
+              <StatusFilter
+                value={statusFilter}
+                onChange={(value: "all" | "active" | "dropped") => setStatusFilter(value)}
+              />
+              <MemberTable members={members} onDrop={handleRemoveMember} />
+            </>
+          )
+        )}
 
-          {activeTab === "settings" && (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
-                <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
+        {activeTab === "settings" && (
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
                 <p className="text-sm text-muted-foreground">
                 Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
               </p>
@@ -708,8 +723,8 @@ const Index = () => {
                 {programStartDateSaving
                   ? "Đang lưu ngày bắt đầu..."
                   : programStartDate
-                  ? "Cập nhật ngày bắt đầu"
-                  : "Lưu ngày bắt đầu"}
+                    ? "Cập nhật ngày bắt đầu"
+                    : "Lưu ngày bắt đầu"}
               </Button>
               {formattedProgramStartDate && (
                 <p className="text-sm text-muted-foreground">
@@ -719,6 +734,7 @@ const Index = () => {
             </div>
           </div>
         )}
+
       </main>
 
       <ConfirmationModal
@@ -733,4 +749,3 @@ const Index = () => {
 };
 
 export default Index;
-

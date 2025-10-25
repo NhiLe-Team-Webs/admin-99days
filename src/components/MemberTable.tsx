@@ -1,15 +1,29 @@
 import type { Member } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog"
 import { useState } from 'react';
 
 interface MemberTableProps {
   members: Member[];
-  onRemove: (id: string, name: string) => void;
+  onDrop: (id: string, reason: string) => void;
 }
 
-export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
+export const MemberTable = ({ members, onDrop }: MemberTableProps) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [dropReason, setDropReason] = useState('');
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const normalizedMembers = members ?? [];
 
@@ -47,13 +61,14 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Telegram</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Số điện thoại</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Ngày tham gia</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Trạng thái</th>
               <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Hành động</th>
             </tr>
           </thead>
           <tbody className="bg-card divide-y divide-border">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                <td colSpan={7} className="text-center py-8 text-muted-foreground">
                   Không có thành viên nào phù hợp.
                 </td>
               </tr>
@@ -75,15 +90,56 @@ export const MemberTable = ({ members, onRemove }: MemberTableProps) => {
                   <td className="px-6 py-4">
                     <div className="text-sm text-muted-foreground">{formatApprovedDate(member)}</div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onRemove(member.id, member.ho_ten ?? member.email)}
-                      className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
-                    >
-                      Loại bỏ
-                    </Button>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-muted-foreground">
+                      {member.status === 'dropped' ? 'Bị loại bỏ' : 'Đang hoạt động'}
+                    </div>
+                  </td>
+                <td className="px-6 py-4 text-center">
+                  {member.status !== 'dropped' && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
+                          onClick={() => setSelectedMemberId(member.id)}
+                        >
+                          Loại bỏ
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Bạn có chắc chắn muốn loại bỏ thành viên này?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Nhập lý do loại bỏ thành viên này.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <Input
+                          type="text"
+                          placeholder="Lý do loại bỏ"
+                          value={dropReason}
+                          onChange={(e) => setDropReason(e.target.value)}
+                          className="w-full mb-4"
+                        />
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Hủy</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => {
+                              if (selectedMemberId) {
+                                onDrop(selectedMemberId, dropReason);
+                                setDropReason('');
+                                setSelectedMemberId(null);
+                              }
+                            }}
+                            disabled={!dropReason}
+                          >
+                            Xác nhận
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    )}
                   </td>
                 </tr>
               ))
