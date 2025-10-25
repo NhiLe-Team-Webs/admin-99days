@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users, FileText, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import type {
   Member,
   ZoomLink,
 } from "@/lib/api";
+import type { ProgressUpdate } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ import { TabNavigation } from "@/components/TabNavigation";
 import { StatsCard } from "@/components/StatsCard";
 import { ApplicantTable } from "@/components/ApplicantTable";
 import { MemberTable } from "@/components/MemberTable";
+import { MemberDetailSheet } from "@/components/MemberDetailSheet";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { supabase } from "@/lib/supabase";
 import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
@@ -77,8 +79,16 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+ const [memberProgress, setMemberProgress] = useState<Record<string, ProgressUpdate[]>>({});
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "dropped">("all");
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [memberDetailOpen, setMemberDetailOpen] = useState(false);
+
+  const selectedMember = useMemo(
+    () => members.find((member) => member.id === selectedMemberId) ?? null,
+    [members, selectedMemberId]
+  );
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -190,6 +200,18 @@ const Index = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!memberDetailOpen || !selectedMemberId) {
+      return;
+    }
+
+    const exists = members.some((member) => member.id === selectedMemberId);
+    if (!exists) {
+      setMemberDetailOpen(false);
+      setSelectedMemberId(null);
+    }
+  }, [members, memberDetailOpen, selectedMemberId]);
 
   useEffect(() => {
     const channel = supabase
@@ -657,7 +679,14 @@ const Index = () => {
                 value={statusFilter}
                 onChange={(value: "all" | "active" | "dropped") => setStatusFilter(value)}
               />
-              <MemberTable members={members} onDrop={handleRemoveMember} />
+              <MemberTable
+                members={members}
+                onDrop={handleRemoveMember}
+                onSelect={(member) => {
+                  setSelectedMemberId(member.id);
+                  setMemberDetailOpen(true);
+                }}
+              />
             </>
           )
         )}
@@ -736,6 +765,17 @@ const Index = () => {
         )}
 
       </main>
+
+      <MemberDetailSheet
+        member={selectedMember}
+        open={memberDetailOpen && !!selectedMember}
+        onOpenChange={(open) => {
+          setMemberDetailOpen(open);
+          if (!open) {
+            setSelectedMemberId(null);
+          }
+        }}
+      />
 
       <ConfirmationModal
         isOpen={confirmModal.isOpen}
