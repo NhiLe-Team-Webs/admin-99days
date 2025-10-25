@@ -13,17 +13,17 @@ interface TabNavigationProps {
 
 export const TabNavigation = ({ tabs, activeTab, onTabChange }: TabNavigationProps) => {
   return (
-    <div className="mb-8 border-b border-border">
-      <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+    <div className="mb-4 border-b border-border">
+      <nav className="flex space-x-4" aria-label="Tabs">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors",
+              "whitespace-nowrap py-2 px-4 font-medium text-sm rounded-md transition-colors",
               activeTab === tab.id
-                ? "border-primary text-primary bg-primary-light"
-                : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground"
             )}
           >
             {tab.label}

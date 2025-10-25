@@ -1,6 +1,34 @@
 import type { AuthError, PostgrestError } from '@supabase/supabase-js';
 import { supabase, supabaseAdmin } from './supabase';
 
+async function checkIfMemberIsInactive(memberId: string, date: string): Promise<boolean> {
+  const { data: gratitudeData, error: gratitudeError } = await supabase
+    .from("gratitude_entries")
+    .select("id")
+    .eq("member_id", memberId)
+    .eq("entry_date", date)
+    .maybeSingle();
+
+  if (gratitudeError) {
+    console.error("Failed to fetch gratitude entry:", gratitudeError);
+    return true; // Assume inactive if there's an error
+  }
+
+  const { data: homeworkData, error: homeworkError } = await supabase
+    .from("homework_submissions")
+    .select("id")
+    .eq("member_id", memberId)
+    .eq("submission_date", date)
+    .maybeSingle();
+
+  if (homeworkError) {
+    console.error("Failed to fetch homework submission:", homeworkError);
+    return true; // Assume inactive if there's an error
+  }
+
+  return !gratitudeData && !homeworkData;
+}
+
 export interface Applicant {
   id: string;
   ho_ten: string;
@@ -263,11 +291,16 @@ export const approveApplicant = async (applicantId: string) => {
 };
 
 // Lấy danh sách thành viên đang hoạt động
-export const getMembers = async () => {
-  const { data, error } = await supabase
+export const getMembers = async (status?: 'active' | 'paused' | 'dropped') => {
+  let query = supabase
     .from('members')
-    .select('*')
-    .eq('status', 'active');
+    .select('*');
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return data as Member[];
@@ -410,7 +443,7 @@ export const updateAdminSettings = async (settings: Record<string, string>) => {
 };
 
 // Đánh dấu thành viên bị loại
-export const removeMember = async (id: string, dropReason?: string) => {
+export const dropMember = async (id: string, dropReason: string) => {
   const { error } = await supabase
     .from('members')
     .update({
@@ -421,4 +454,21 @@ export const removeMember = async (id: string, dropReason?: string) => {
     .eq('id', id);
 
   if (error) throw error;
+};
+
+export const checkAndDropInactiveMembers = async () => {
+  const today = new Date().toISOString().split("T")[0];
+  const members = await getMembers();
+
+  for (const member of members) {
+    const isInactive = await checkIfMemberIsInactive(member.id, today);
+    if (isInactive) {
+      try {
+        await dropMember(member.id, "No gratitude entry or homework submission for one day");
+        console.log(`Member ${member.ho_ten} (${member.email}) marked as inactive.`);
+      } catch (error) {
+        console.error(`Failed to drop member ${member.ho_ten} (${member.email}):`, error);
+      }
+    }
+  }
 };

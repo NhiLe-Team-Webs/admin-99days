@@ -57,6 +57,20 @@ before update on public.members
 for each row
 execute function public.set_updated_at();
 
+-- Add drop_reason column
+ALTER TABLE public.members
+ADD COLUMN drop_reason TEXT;
+
+-- Modify status column to include 'dropped'
+ALTER TABLE public.members
+ALTER COLUMN status TYPE TEXT;
+
+ALTER TABLE public.members
+DROP CONSTRAINT members_status_check;
+
+ALTER TABLE public.members
+ADD CONSTRAINT members_status_check CHECK (status IN ('active', 'paused', 'dropped'));
+
 create table if not exists public.zoom_links (
   id uuid primary key default gen_random_uuid(),
   url text not null unique,
@@ -346,6 +360,9 @@ create table if not exists public.progress_updates (
   recorded_for date not null default current_date,
   weight numeric(5,2) not null,
   height numeric(5,2) not null,
+  waist numeric(5,2),
+  bust numeric(5,2),
+  hips numeric(5,2),
   note text,
   photo_url text,
   created_at timestamptz not null default now(),

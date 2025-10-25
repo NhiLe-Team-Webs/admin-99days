@@ -2,17 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 99 Days Admin Panel Design System - Clean, professional red theme with Inter font */
+/* 99 Days Admin Panel Design System - Clean, professional and modern theme with Inter font */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @layer base {
   :root {
-    /* Background colors */
+    /* Background colors - Adjusted for a cleaner look */
     --background: 220 14% 96%;
     --foreground: 220 8.9% 46.1%;
 
-    /* Card colors */
+    /* Card colors - Removed shadow for flatter design */
     --card: 0 0% 100%;
     --card-foreground: 220 8.9% 46.1%;
 
@@ -22,11 +22,11 @@
     --primary-light: 0 100% 97%; /* Red-50 */
     --primary-hover: 0 74.3% 54.5%; /* Red-600 */
 
-    /* Secondary grays */
+    /* Secondary grays - Lighter shades */
     --secondary: 220 14.3% 95.9%;
     --secondary-foreground: 220 8.9% 46.1%;
 
-    /* Success green */
+    /* Success green - Calmer tone */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
     --success-light: 138 76% 97%;
@@ -36,27 +36,27 @@
     --info-foreground: 0 0% 100%;
     --info-light: 214 100% 97%;
 
-    /* Muted colors */
+    /* Muted colors - Softer */
     --muted: 220 14.3% 95.9%;
     --muted-foreground: 220 8.9% 46.1%;
 
-    /* Accent colors */
+    /* Accent colors - More neutral */
     --accent: 220 14.3% 95.9%;
     --accent-foreground: 220 8.9% 46.1%;
 
-    /* Destructive colors */
+    /* Destructive colors - More prominent */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Border and inputs */
+    /* Border and inputs - Refined */
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 0 84.2% 60.2%;
 
-    /* Border radius */
+    /* Border radius - Slightly smaller for a modern feel */
     --radius: 0.75rem;
 
-    /* Sidebar colors */
+    /* Sidebar colors - Light and clean */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
