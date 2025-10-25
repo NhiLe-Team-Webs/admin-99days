@@ -18,9 +18,10 @@ import { useState } from 'react';
 interface MemberTableProps {
   members: Member[];
   onDrop: (id: string, reason: string) => void;
+  onSelect: (member: Member) => void;
 }
 
-export const MemberTable = ({ members, onDrop }: MemberTableProps) => {
+export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dropReason, setDropReason] = useState('');
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -95,51 +96,61 @@ export const MemberTable = ({ members, onDrop }: MemberTableProps) => {
                       {member.status === 'dropped' ? 'Bị loại bỏ' : 'Đang hoạt động'}
                     </div>
                   </td>
-                <td className="px-6 py-4 text-center">
-                  {member.status !== 'dropped' && (
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
-                          onClick={() => setSelectedMemberId(member.id)}
-                        >
-                          Loại bỏ
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Bạn có chắc chắn muốn loại bỏ thành viên này?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Nhập lý do loại bỏ thành viên này.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <Input
-                          type="text"
-                          placeholder="Lý do loại bỏ"
-                          value={dropReason}
-                          onChange={(e) => setDropReason(e.target.value)}
-                          className="w-full mb-4"
-                        />
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Hủy</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => {
-                              if (selectedMemberId) {
-                                onDrop(selectedMemberId, dropReason);
-                                setDropReason('');
-                                setSelectedMemberId(null);
-                              }
-                            }}
-                            disabled={!dropReason}
-                          >
-                            Xác nhận
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                    )}
+                  <td className="px-6 py-4 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="font-semibold text-primary hover:bg-primary/10 hover:text-primary"
+                        onClick={() => onSelect(member)}
+                      >
+                        Xem chi tiet
+                      </Button>
+                      {member.status !== 'dropped' && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
+                              onClick={() => setSelectedMemberId(member.id)}
+                            >
+                              Xóa
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>B???n cA3 ch??_c ch??_n mu??`n lo???i b??? thA?nh viA?n nA?y?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Nh??-p lA? do lo???i b??? thA?nh viA?n nA?y.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <Input
+                              type="text"
+                              placeholder="LA? do lo???i b???"
+                              value={dropReason}
+                              onChange={(e) => setDropReason(e.target.value)}
+                              className="w-full mb-4"
+                            />
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>H??y</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => {
+                                  if (selectedMemberId) {
+                                    onDrop(selectedMemberId, dropReason);
+                                    setDropReason('');
+                                    setSelectedMemberId(null);
+                                  }
+                                }}
+                                disabled={!dropReason}
+                              >
+                                XA?c nh??-n
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

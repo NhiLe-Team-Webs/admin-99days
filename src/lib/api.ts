@@ -88,6 +88,42 @@ export interface AdminSetting {
   updated_at: string;
 }
 
+export interface GratitudeEntry {
+  id: string;
+  member_id: string;
+  entry_date: string;
+  gratitude: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HomeworkSubmission {
+  id: string;
+  member_id: string;
+  submission_date: string;
+  lesson: string;
+  submission: string;
+  mentor_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProgressUpdate {
+  id: string;
+  member_id: string;
+  recorded_at: string;
+  recorded_for: string;
+  weight: number;
+  height: number;
+  waist: number | null;
+  bust: number | null;
+  hips: number | null;
+  note: string | null;
+  photo_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const nowIso = () => new Date().toISOString();
 
 const columnMissing = (error: PostgrestError | null, column: string) =>
@@ -454,6 +490,40 @@ export const dropMember = async (id: string, dropReason: string) => {
     .eq('id', id);
 
   if (error) throw error;
+};
+
+export const getMemberGratitudeEntries = async (memberId: string) => {
+  const { data, error } = await supabase
+    .from('gratitude_entries')
+    .select('id, member_id, entry_date, gratitude, created_at, updated_at')
+    .eq('member_id', memberId)
+    .order('entry_date', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as GratitudeEntry[];
+};
+
+export const getMemberHomeworkSubmissions = async (memberId: string) => {
+  const { data, error } = await supabase
+    .from('homework_submissions')
+    .select('id, member_id, submission_date, lesson, submission, mentor_notes, created_at, updated_at')
+    .eq('member_id', memberId)
+    .order('submission_date', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as HomeworkSubmission[];
+};
+
+export const getMemberProgressUpdates = async (memberId: string) => {
+  const { data, error } = await supabase
+    .from('progress_updates')
+    .select('id, member_id, recorded_at, recorded_for, weight, height, waist, bust, hips, note, photo_url, created_at, updated_at')
+    .eq('member_id', memberId)
+    .order('recorded_for', { ascending: false })
+    .order('recorded_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as ProgressUpdate[];
 };
 
 export const checkAndDropInactiveMembers = async () => {
