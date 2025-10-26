@@ -104,7 +104,7 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                         className="font-semibold text-primary hover:bg-primary/10 hover:text-primary"
                         onClick={() => onSelect(member)}
                       >
-                        Xem chi tiet
+                        Xem chi tiết
                       </Button>
                       {member.status !== 'dropped' && (
                         <AlertDialog>

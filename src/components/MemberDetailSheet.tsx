@@ -24,6 +24,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 type ActivityType = "gratitude" | "homework" | "progress";
 
@@ -44,6 +52,22 @@ const ACTIVITY_COLORS: Record<ActivityType, string> = {
   homework: "bg-indigo-500",
   progress: "bg-amber-500",
 };
+
+const PROGRESS_CHART_CONFIG = {
+  weight: { label: "Cân nặng", color: "#2563eb" },
+  waist: { label: "Vòng eo", color: "#0ea5e9" },
+  hips: { label: "Vòng mong", color: "#f97316" },
+  bust: { label: "Vòng ngực", color: "#ec4899" },
+} as const;
+
+type ProgressTrend = "up" | "down" | "flat";
+
+interface ProgressStatDisplay {
+  label: string;
+  value: string;
+  diffLabel?: string;
+  trend?: ProgressTrend;
+}
 
 const ACTIVITY_LABELS: Record<ActivityType, string> = {
   gratitude: "Biết ơn",
@@ -96,6 +120,7 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
   const [homeworkSubmissions, setHomeworkSubmissions] = useState<HomeworkSubmission[]>([]);
   const [progressUpdates, setProgressUpdates] = useState<ProgressUpdate[]>([]);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const memberId = member?.id;
 
@@ -104,6 +129,7 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
       setGratitudeEntries([]);
       setHomeworkSubmissions([]);
       setProgressUpdates([]);
+      setSelectedDate(null);
       setError(null);
       setIsLoading(false);
       return;
@@ -202,6 +228,38 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
     return map;
   }, [gratitudeEntries, homeworkSubmissions, progressUpdates]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const activityDates = Array.from(activityByDate.keys()).sort();
+    const currentKey = selectedDate ? dayKey(selectedDate) : null;
+
+    if (currentKey && activityByDate.has(currentKey)) {
+      return;
+    }
+
+    if (activityDates.length > 0) {
+      const lastKey = activityDates[activityDates.length - 1];
+      const parsed = toDateOnly(lastKey) ?? toDateTime(lastKey) ?? null;
+      if (parsed && !Number.isNaN(parsed.getTime())) {
+        setSelectedDate(parsed);
+        setCurrentMonth(parsed);
+        return;
+      }
+    }
+
+    if (startDate) {
+      setSelectedDate(startDate);
+      setCurrentMonth(startDate);
+    } else {
+      setSelectedDate(null);
+    }
+  }, [activityByDate, open, selectedDate, startDate]);
+
+  const selectedDayKey = selectedDate ? dayKey(selectedDate) : null;
+  const selectedActivities = selectedDayKey ? activityByDate.get(selectedDayKey) : undefined;
+  const selectedDisplayDate = selectedDate ? format(selectedDate, "dd/MM/yyyy") : null;
+
   const dayIndicators = useMemo(() => {
     const indicators = new Map<string, ActivityType[]>();
     activityByDate.forEach((bucket, date) => {
@@ -222,6 +280,85 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
       new Date().getMonth(),
       new Date().getDate(),
     );
+  const sortedProgressUpdates = useMemo(() => {
+    return [...progressUpdates].sort((a, b) => {
+      const aKey =
+        normalizeDateKey(a.recorded_for ?? a.recorded_at ?? a.created_at) ?? "";
+      const bKey =
+        normalizeDateKey(b.recorded_for ?? b.recorded_at ?? b.created_at) ?? "";
+      return aKey.localeCompare(bKey);
+    });
+  }, [progressUpdates]);
+  const initialProgress = sortedProgressUpdates[0] ?? null;
+  const latestProgress =
+    sortedProgressUpdates[sortedProgressUpdates.length - 1] ?? null;
+  const chartData = useMemo(
+    () =>
+      sortedProgressUpdates.map((update) => ({
+        date: formatDisplayDate(update.recorded_for ?? update.recorded_at),
+        weight: update.weight,
+        waist: update.waist ?? undefined,
+        bust: update.bust ?? undefined,
+        hips: update.hips ?? undefined,
+      })),
+    [sortedProgressUpdates],
+  );
+  const hasWaistData = useMemo(
+    () => chartData.some((item) => typeof item.waist === "number"),
+    [chartData],
+  );
+  const hasBustData = useMemo(
+    () => chartData.some((item) => typeof item.bust === "number"),
+    [chartData],
+  );
+  const hasHipsData = useMemo(
+    () => chartData.some((item) => typeof item.hips === "number"),
+    [chartData],
+  );
+  const progressStats = useMemo<ProgressStatDisplay[]>(() => {
+    if (!latestProgress) return [];
+
+    const base = initialProgress ?? latestProgress;
+    const formatNumber = (value: number) =>
+      Number.isInteger(value) ? value.toString() : value.toFixed(1);
+    const stats: ProgressStatDisplay[] = [];
+    const pushMetric = (
+      label: string,
+      current: number | null | undefined,
+      initial: number | null | undefined,
+      unit: string,
+      trackTrend = true,
+    ) => {
+      if (current == null) return;
+      const valueLabel = `${formatNumber(current)} ${unit}`;
+
+      if (!trackTrend || initial == null) {
+        stats.push({ label, value: valueLabel });
+        return;
+      }
+
+      const diffValue = Number((current - initial).toFixed(1));
+      if (diffValue === 0) {
+        stats.push({ label, value: valueLabel, diffLabel: "Khong doi", trend: "flat" });
+        return;
+      }
+
+      stats.push({
+        label,
+        value: valueLabel,
+        diffLabel: `${diffValue > 0 ? "+" : ""}${formatNumber(diffValue)} ${unit}`,
+        trend: diffValue < 0 ? "down" : "up",
+      });
+    };
+
+    pushMetric("Cân nặng", latestProgress.weight, base.weight, "kg");
+    pushMetric("Chiều cao", latestProgress.height, base.height, "cm", false);
+    pushMetric("Vòng eo", latestProgress.waist, base.waist, "cm");
+    pushMetric("Vòng ngực", latestProgress.bust, base.bust, "cm");
+    pushMetric("Vòng mông", latestProgress.hips, base.hips, "cm");
+
+    return stats;
+  }, [initialProgress, latestProgress]);
 
   const renderDayContent = (props: { date: Date }) => {
     const indicatorsForDay = dayIndicators.get(dayKey(props.date)) ?? [];
@@ -351,32 +488,36 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                   <CardContent>
                     <div className="flex flex-col gap-6 lg:flex-row">
                       <Calendar
+                        mode="single"
                         month={currentMonth}
                         onMonthChange={setCurrentMonth}
+                        selected={selectedDate ?? undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            setSelectedDate(date);
+                            setCurrentMonth(date);
+                          } else {
+                            setSelectedDate(null);
+                          }
+                        }}
                         fromDate={calendarFromDate}
                         toDate={calendarToDate}
                         components={{ DayContent: renderDayContent }}
                         modifiers={{
                           dropDay: dropDate ? [dropDate] : [],
-                                                     startDay: startDate ? [startDate] : [],
-                                                   }}
-                                                   onDayClick={(date) => {
-                                                    setSelectedDate(date);
-                                                   }}
-                                                   modifiersClassNames={{
-                                                     dropDay: "ring-2 ring-destructive text-destructive font-semibold",
-                                                     startDay: "ring-2 ring-primary",
+                          startDay: startDate ? [startDate] : [],
+                        }}
+                        modifiersClassNames={{
+                          dropDay: "ring-2 ring-destructive text-destructive font-semibold",
+                          startDay: "ring-2 ring-primary",
                         }}
                       />
                       <div className="flex-1 space-y-4">
                         <div>
-                          <p className="text-sm font-medium text-foreground">Ghi chú màu sắc</p>
                           <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
                             {(Object.keys(ACTIVITY_LABELS) as ActivityType[]).map((type) => (
                               <span key={type} className="flex items-center gap-2">
-                                <span
-                                  className={cn("h-2.5 w-2.5 rounded-full", ACTIVITY_COLORS[type])}
-                                />
+                                <span className={cn("h-2.5 w-2.5 rounded-full", ACTIVITY_COLORS[type])} />
                                 {ACTIVITY_LABELS[type]}
                               </span>
                             ))}
@@ -387,7 +528,7 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                           <p>
                             Ngày bắt đầu:{" "}
                             <span className="font-medium text-foreground">
-                              {startDate ? format(startDate, "dd/MM/yyyy") : "Không rõ"}
+                              {startDate ? format(startDate, "dd/MM/yyyy") : "Khong ro"}
                             </span>
                           </p>
                           {dropDate ? (
@@ -407,10 +548,34 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                           )}
                           {dropDayNumber && (
                             <p>
-                              Hoàn thành đến ngày:{" "}
+                              Hoan thanh den ngay:{" "}
                               <span className="font-medium text-foreground">
                                 {dropDayNumber}
                               </span>
+                            </p>
+                          )}
+                        </div>
+                        <Separator />
+                        <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+                          <p className="text-sm font-semibold text-foreground">
+                            Hoạt động ngày {selectedDisplayDate ?? "Chon tren lich"}
+                          </p>
+                          {selectedDate ? (
+                            <div className="space-y-3 text-sm">
+                              <div>
+                                <p className="text-xs uppercase text-muted-foreground">Biết ơn</p>
+                                {selectedActivities?.gratitude ? (
+                                  <p className="mt-1 whitespace-pre-wrap text-foreground">
+                                    {selectedActivities.gratitude.gratitude}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1 text-muted-foreground">Không có.</p>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground">
+                              Chon mot ngay tren lich de xem chi tiet hoat dong.
                             </p>
                           )}
                         </div>
@@ -425,107 +590,102 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                   </div>
                 )}
 
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Lịch sử biết ơn</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {renderHistoryItem(gratitudeEntries, (entry) => (
-                        <>
-                          <p className="font-medium text-foreground">
-                            {formatDisplayDate(entry.entry_date)}
-                          </p>
-                          <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
-                            {entry.gratitude}
-                          </p>
-                        </>
-                      ))}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Lịch sử bài tập</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {renderHistoryItem(homeworkSubmissions, (submission) => (
-                        <>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium text-foreground">
-                              {formatDisplayDate(submission.submission_date)}
-                            </span>
-                            <span className="text-muted-foreground">{submission.lesson}</span>
-                          </div>
-                          <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
-                            {submission.submission}
-                          </p>
-                          {submission.mentor_notes && (
-                            <p className="mt-2 rounded-md bg-secondary/50 p-2 text-xs text-secondary-foreground">
-                              Ghi chú mentor: {submission.mentor_notes}
-                            </p>
-                          )}
-                        </>
-                      ))}
-                    </CardContent>
-                  </Card>
-                </div>
-
                 <Card>
                   <CardHeader>
                     <CardTitle>Lịch sử tiến độ</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {renderHistoryItem(progressUpdates, (update) => (
-                      <>
-                        <div className="flex flex-wrap items-center gap-3 text-sm">
-                          <span className="font-medium text-foreground">
-                            {formatDisplayDate(update.recorded_for ?? update.recorded_at)}
-                          </span>
-                          <span className="text-muted-foreground">
-                            Cân nặng:{" "}
-                            <span className="font-medium text-foreground">{update.weight} kg</span>
-                          </span>
-                          <span className="text-muted-foreground">
-                            Chiều cao:{" "}
-                            <span className="font-medium text-foreground">{update.height} cm</span>
-                          </span>
-                          {update.waist && (
-                            <span className="text-muted-foreground">
-                              Vòng eo:{" "}
-                              <span className="font-medium text-foreground">{update.waist} cm</span>
-                            </span>
-                          )}
-                          {update.bust && (
-                            <span className="text-muted-foreground">
-                              Vòng ngực:{" "}
-                              <span className="font-medium text-foreground">{update.bust} cm</span>
-                            </span>
-                          )}
-                          {update.hips && (
-                            <span className="text-muted-foreground">
-                              Vòng mông:{" "}
-                              <span className="font-medium text-foreground">{update.hips} cm</span>
-                            </span>
-                          )}
+                    {isLoading ? (
+                      <div className="space-y-3">
+                        {[...Array(3)].map((_, index) => (
+                          <div key={index} className="space-y-2">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-16 w-full" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : sortedProgressUpdates.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Chua co cap nhat tien do.</p>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {progressStats.map((stat) => (
+                            <div key={stat.label} className="rounded-lg border border-border bg-muted/40 p-3">
+                              <p className="text-xs uppercase text-muted-foreground">{stat.label}</p>
+                              <p className="text-lg font-semibold text-foreground">{stat.value}</p>
+                              {stat.diffLabel && (
+                                <p
+                                  className={cn(
+                                    'text-xs font-medium',
+                                    stat.trend === 'down'
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : stat.trend === 'up'
+                                      ? 'text-destructive'
+                                      : 'text-muted-foreground',
+                                  )}
+                                >
+                                  {stat.diffLabel}
+                                </p>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                        {update.note && (
-                          <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
-                            {update.note}
-                          </p>
-                        )}
-                        {update.photo_url && (
-                          <a
-                            href={update.photo_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-2 inline-flex text-sm font-medium text-primary hover:underline"
-                          >
-                            Xem ảnh đính kèm
-                          </a>
-                        )}
-                      </>
-                    ))}
+                        <div className="rounded-lg border border-border bg-muted/40 p-4">
+                          <ChartContainer config={PROGRESS_CHART_CONFIG} className="h-72">
+                            <LineChart data={chartData} margin={{ left: 12, right: 12 }}>
+                              <CartesianGrid strokeDasharray="4 4" className="stroke-border/60" />
+                              <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={12} />
+                              <YAxis tickLine={false} axisLine={false} fontSize={12} width={40} />
+                              <ChartTooltip content={<ChartTooltipContent labelKey="date" />} cursor={false} />
+                              <ChartLegend content={<ChartLegendContent />} />
+                              <Line
+                                type="monotone"
+                                dataKey="weight"
+                                name={PROGRESS_CHART_CONFIG.weight.label}
+                                stroke="var(--color-weight)"
+                                strokeWidth={2}
+                                dot
+                                activeDot={{ r: 4 }}
+                                connectNulls
+                              />
+                              {hasWaistData && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="waist"
+                                  name={PROGRESS_CHART_CONFIG.waist.label}
+                                  stroke="var(--color-waist)"
+                                  strokeWidth={2}
+                                  dot={false}
+                                  connectNulls
+                                />
+                              )}
+                              {hasBustData && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="bust"
+                                  name={PROGRESS_CHART_CONFIG.bust.label}
+                                  stroke="var(--color-bust)"
+                                  strokeWidth={2}
+                                  dot={false}
+                                  connectNulls
+                                />
+                              )}
+                              {hasHipsData && (
+                                <Line
+                                  type="monotone"
+                                  dataKey="hips"
+                                  name={PROGRESS_CHART_CONFIG.hips.label}
+                                  stroke="var(--color-hips)"
+                                  strokeWidth={2}
+                                  dot={false}
+                                  connectNulls
+                                />
+                              )}
+                            </LineChart>
+                          </ChartContainer>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </>
