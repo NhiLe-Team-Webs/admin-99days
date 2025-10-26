@@ -548,7 +548,7 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                           )}
                           {dropDayNumber && (
                             <p>
-                              Hoan thanh den ngay:{" "}
+                              Hoàn thành đến ngày thứ:{" "}
                               <span className="font-medium text-foreground">
                                 {dropDayNumber}
                               </span>

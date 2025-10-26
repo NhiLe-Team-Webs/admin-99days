@@ -120,20 +120,20 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>B???n cA3 ch??_c ch??_n mu??`n lo???i b??? thA?nh viA?n nA?y?</AlertDialogTitle>
+                              <AlertDialogTitle>Bạn có chắc muốn loại bỏ thành viên này không?</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Nh??-p lA? do lo???i b??? thA?nh viA?n nA?y.
+                                Nhập lý do để loại bỏ thành viên này.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <Input
                               type="text"
-                              placeholder="LA? do lo???i b???"
+                              placeholder="Lý do loại bỏ thành viên..."
                               value={dropReason}
                               onChange={(e) => setDropReason(e.target.value)}
                               className="w-full mb-4"
                             />
                             <AlertDialogFooter>
-                              <AlertDialogCancel>H??y</AlertDialogCancel>
+                              <AlertDialogCancel>Hủy</AlertDialogCancel>
                               <AlertDialogAction
                                 onClick={() => {
                                   if (selectedMemberId) {
@@ -144,7 +144,7 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                                 }}
                                 disabled={!dropReason}
                               >
-                                XA?c nh??-n
+                                Xác nhận
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
