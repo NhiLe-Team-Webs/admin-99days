@@ -44,7 +44,7 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
   };
 
   return (
-    <div className="bg-card p-6 rounded-xl shadow-lg">
+    <div className="rounded-xl bg-card p-5 shadow-lg sm:p-6">
       <h2 className="text-xl font-bold mb-4">Danh sách thành viên</h2>
       <Input
         type="text"
@@ -57,13 +57,13 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Họ tên</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Telegram</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Số điện thoại</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Ngày tham gia</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase">Trạng thái</th>
-              <th className="px-6 py-3 text-center text-xs font-medium text-muted-foreground uppercase">Hành động</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Họ tên</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Email</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Telegram</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Số điện thoại</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Ngày tham gia</th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Trạng thái</th>
+              <th className="px-4 py-3 text-center text-xs font-medium uppercase text-muted-foreground sm:px-6">Hành động</th>
             </tr>
           </thead>
           <tbody className="bg-card divide-y divide-border">
@@ -76,28 +76,28 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
             ) : (
               filteredMembers.map((member) => (
                 <tr key={member.id}>
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-foreground">{member.ho_ten ?? '—'}</div>
+                  <td className="px-4 py-4 sm:px-6">
+                    <div className="font-medium text-foreground">{member.ho_ten ?? "—"}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-foreground">{member.email}</div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-muted-foreground">{member.telegram ?? '—'}</div>
+                  <td className="px-4 py-4 sm:px-6">
+                    <div className="text-sm text-muted-foreground">{member.telegram ?? "—"}</div>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-muted-foreground">{member.so_dien_thoai ?? '—'}</div>
+                  <td className="px-4 py-4 sm:px-6">
+                    <div className="text-sm text-muted-foreground">{member.so_dien_thoai ?? "—"}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-muted-foreground">{formatApprovedDate(member)}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-muted-foreground">
-                      {member.status === 'dropped' ? 'Bị loại bỏ' : 'Đang hoạt động'}
+                      {member.status === "dropped" ? "Bị loại bỏ" : "Đang hoạt động"}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
+                  <td className="px-4 py-4 text-center sm:px-6">
+                    <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
                       <Button
                         variant="ghost"
                         size="sm"

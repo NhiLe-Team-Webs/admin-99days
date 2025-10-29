@@ -586,8 +586,8 @@ const Index = () => {
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
   ) : (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="space-y-6 sm:space-y-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 sm:gap-6">
         <StatsCard
           title="Tổng thành viên"
           value={members.length}
@@ -647,14 +647,14 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200">
-        <div className="container mx-auto px-6 py-5">
-          <h1 className="text-2xl md:text-3xl font-semibold text-slate-900">
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
+          <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
             Bảng điều khiển quản trị
           </h1>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 sm:py-8">
         <TabNavigation tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
 
         {activeTab === "dashboard" && dashboardContent}
@@ -693,7 +693,7 @@ const Index = () => {
 
         {activeTab === "settings" && (
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
               <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
                 <p className="text-sm text-muted-foreground">
                 Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
@@ -710,7 +710,7 @@ const Index = () => {
               </Button>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
               <h3 className="text-lg font-semibold text-slate-900">Giờ gửi Telegram</h3>
               <div className="space-y-2">
                 <Label htmlFor="telegram-send-time">Giờ gửi tự động (HH:MM)</Label>
@@ -730,7 +730,7 @@ const Index = () => {
               </Button>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-3xl shadow-sm p-6 space-y-4">
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
               <h3 className="text-lg font-semibold text-slate-900">Ngày bắt đầu chương trình</h3>
               <p className="text-sm text-muted-foreground">
                 Chọn ngày chính thức bắt đầu để đồng bộ với các hệ thống khác.
