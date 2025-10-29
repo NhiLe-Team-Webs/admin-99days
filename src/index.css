@@ -9,21 +9,21 @@
 @layer base {
   :root {
     /* Background colors - Adjusted for a cleaner look */
-    --background: 220 14% 96%;
+    --background: 0 0% 100%;
     --foreground: 220 8.9% 46.1%;
 
     /* Card colors - Removed shadow for flatter design */
     --card: 0 0% 100%;
     --card-foreground: 220 8.9% 46.1%;
 
-    /* Primary red theme for 99 Days */
-    --primary: 0 84.2% 60.2%; /* Red-500 */
+    /* Primary theme color for 99 Days */
+    --primary: 26 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --primary-light: 0 100% 97%; /* Red-50 */
-    --primary-hover: 0 74.3% 54.5%; /* Red-600 */
+    --primary-light: 26 100% 94%;
+    --primary-hover: 26 100% 45%;
 
     /* Secondary grays - Lighter shades */
-    --secondary: 220 14.3% 95.9%;
+    --secondary: 26 100% 96%;
     --secondary-foreground: 220 8.9% 46.1%;
 
     /* Success green - Calmer tone */
@@ -51,7 +51,7 @@
     /* Border and inputs - Refined */
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 0 84.2% 60.2%;
+    --ring: 26 100% 50%;
 
     /* Border radius - Slightly smaller for a modern feel */
     --radius: 0.75rem;
@@ -59,12 +59,12 @@
     /* Sidebar colors - Light and clean */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 26 100% 50%;
     --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent: 26 100% 96%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-ring: 26 100% 50%;
   }
 
   .dark {

@@ -36,7 +36,17 @@ export interface Applicant {
   so_dien_thoai: string | null;
   telegram: string | null;
   nam_sinh: number | null;
+  gioi_tinh: string | null;
+  dia_chi: string | null;
+  da_tham_gia_truoc: string | null;
+  link_bai_chia_se: string | null;
+  muc_tieu: string | null;
+  ky_luat_rating: number | null;
   ly_do: string | null;
+  thoi_gian_thuc_day: string | null;
+  tan_suat_tap_the_duc: string | null;
+  muc_do_van_dong: number | null;
+  tinh_trang_suc_khoe: string | null;
   dong_y: boolean;
   status: 'pending' | 'approved' | 'rejected';
   approved_at: string | null;
