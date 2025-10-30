@@ -36,6 +36,7 @@ import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { supabase } from "@/lib/supabase";
 import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
 import { StatusFilter } from "@/components/StatusFilter";
+import { useAuth } from "@/contexts/auth-context";
 
 interface StatusFilterProps {
   value: "all" | "active" | "dropped";
@@ -76,6 +77,7 @@ const formatVietnamDate = (dateString: string) => new Date(`${dateString}T00:00:
 
 const Index = () => {
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [applicants, setApplicants] = useState<Applicant[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -114,6 +116,7 @@ const Index = () => {
   const [programStartDate, setProgramStartDate] = useState("");
   const [programStartDateDraft, setProgramStartDateDraft] = useState("");
   const [programStartDateSaving, setProgramStartDateSaving] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const hasTelegramConfig = useMemo(
     () => canSendTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID),
@@ -583,6 +586,22 @@ const Index = () => {
     );
   };
 
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+      toast({
+        title: "Đăng xuất thất bại",
+        description: "Vui lòng thử lại sau ít phút.",
+        variant: "destructive",
+      });
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   const dashboardContent = loading ? (
     <div className="text-center py-8 text-muted-foreground">Đang tải dữ liệu...</div>
   ) : (
@@ -648,9 +667,19 @@ const Index = () => {
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200">
         <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-5">
-          <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
-            Bảng điều khiển quản trị
-          </h1>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="text-2xl font-semibold text-slate-900 md:text-3xl">
+              Bảng điều khiển quản trị
+            </h1>
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 sm:text-sm">
+                {user?.email ?? "Admin"}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleSignOut} disabled={signingOut}>
+                {signingOut ? "Đang đăng xuất..." : "Đăng xuất"}
+              </Button>
+            </div>
+          </div>
         </div>
       </header>
 
