@@ -86,6 +86,8 @@ const Index = () => {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "dropped">("all");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [memberDetailOpen, setMemberDetailOpen] = useState(false);
+  const [selectedApplicantIds, setSelectedApplicantIds] = useState<string[]>([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
 
   const selectedMember = useMemo(
     () => members.find((member) => member.id === selectedMemberId) ?? null,
@@ -205,6 +207,13 @@ const Index = () => {
   }, [fetchData]);
 
   useEffect(() => {
+    setSelectedApplicantIds((prev) => {
+      const next = prev.filter((id) => applicants.some((applicant) => applicant.id === id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [applicants]);
+
+  useEffect(() => {
     if (!memberDetailOpen || !selectedMemberId) {
       return;
     }
@@ -296,10 +305,79 @@ const Index = () => {
     setConfirmModal({ isOpen: false, title: "", description: "", onConfirm: () => { } });
   };
 
+  const toggleApplicantSelection = (id: string, checked: boolean) => {
+    setSelectedApplicantIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) {
+          return prev;
+        }
+        return [...prev, id];
+      }
+      return prev.filter((selectedId) => selectedId !== id);
+    });
+  };
+
+  const toggleSelectAllApplicants = (checked: boolean) => {
+    if (checked) {
+      setSelectedApplicantIds(applicants.map((applicant) => applicant.id));
+    } else {
+      setSelectedApplicantIds([]);
+    }
+  };
+
+  const bulkApproveApplicants = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setBulkApproving(true);
+    try {
+      const results = await Promise.allSettled(ids.map((applicantId) => approveApplicant(applicantId)));
+      const succeededIds = ids.filter((_, index) => results[index].status === "fulfilled");
+      const failedCount = results.length - succeededIds.length;
+
+      if (succeededIds.length > 0) {
+        setApplicants((prev) => prev.filter((applicant) => !succeededIds.includes(applicant.id)));
+        setSelectedApplicantIds((prev) =>
+          prev.filter((selectedId) => !succeededIds.includes(selectedId))
+        );
+        toast({
+          title: "Da duyet ho so",
+          description: `Hoan thanh duyet ${succeededIds.length} ho so.`,
+        });
+      }
+
+      if (failedCount > 0) {
+        toast({
+          title: "Mot so ho so khong duoc duyet",
+          description: "Vui long thu lai cac ho so loi.",
+          variant: "destructive",
+        });
+      }
+
+      await fetchData();
+    } catch (error) {
+      console.error("Failed to bulk approve applicants:", error);
+      toast({
+        title: "Loi",
+        description: "Khong the duyet cac ho so da chon.",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkApproving(false);
+    }
+  };
+
+  const handleBulkApproveSelected = async () => {
+    await bulkApproveApplicants(selectedApplicantIds);
+  };
+
+  const handleApproveAllApplicants = async () => {
+    await bulkApproveApplicants(applicants.map((applicant) => applicant.id));
+  };
+
   const handleApprove = async (id: string) => {
     try {
       await approveApplicant(id);
       setApplicants((prev) => prev.filter((applicant) => applicant.id !== id));
+      setSelectedApplicantIds((prev) => prev.filter((selectedId) => selectedId !== id));
       toast({
         title: "Đã duyệt",
         description: "Hồ sơ đã được chuyển vào danh sách thành viên.",
@@ -314,7 +392,6 @@ const Index = () => {
       });
     }
   };
-
   const handleReject = async (id: string, name: string) => {
     showConfirmModal(
       "Xác nhận từ chối",
@@ -322,9 +399,10 @@ const Index = () => {
       async () => {
         try {
           await updateApplicantStatus(id, "rejected");
+          setSelectedApplicantIds((prev) => prev.filter((selectedId) => selectedId !== id));
           toast({
             title: "Đã từ chối",
-            description: `Đơn đăng ký của ${name} đã được cập nhật.`,
+            description: "Đơn đăng ký đã được cập nhật.",
             variant: "destructive",
           });
           await fetchData();
@@ -345,13 +423,13 @@ const Index = () => {
   const handleRemoveMember = (id: string, reason: string) => {
     showConfirmModal(
       "Xác nhận loại bỏ",
-      `Bạn chắc chắn muốn loại bỏ thành viên này khỏi chương trình?`,
+      "Bạn chắc chắn muốn loại bỏ thành viên này khỏi chương trình?",
       async () => {
         try {
           await dropMember(id, reason);
           toast({
             title: "Đã loại bỏ thành viên",
-            description: `Đã loại bỏ ${name} khỏi danh sách thành viên.`,
+            description: "Thành viên đã được gỡ khỏi danh sách.",
             variant: "destructive",
           });
           await fetchData();
@@ -376,7 +454,7 @@ const Index = () => {
       setZoomLinks(updatedLinks);
       toast({
         title: "Đã lưu danh sách Zoom",
-        description: `Đã cập nhật  đường link.`,
+        description: `Đã cập nhật danh sách link.`,
       });
       await ensureTodayZoomLink(updatedLinks);
     } catch (error) {
@@ -459,7 +537,7 @@ const Index = () => {
       return;
     }
 
-    const message = `Link Zoom cho ngày ${formatVietnamDate(dailyZoomLink.scheduled_for)}:\n${dailyZoomLink.zoom_link.url}`;
+    const message = "Link Zoom cho ngày:\n";
 
     try {
       setTelegramSending(true);
@@ -568,7 +646,7 @@ const Index = () => {
           await updateAdminSettings({ program_start_date: newStartDate });
           setProgramStartDate(newStartDate);
           toast({
-            title: "Đã cập nhật giờ bắt đầu",
+            title: "Đã cập nhật ngày bắt đầu",
             description: "Thông tin ngày bắt đầu chương trình đã được lưu lại.",
           });
         } catch (error) {
@@ -694,6 +772,12 @@ const Index = () => {
             isLoading={loading}
             onApprove={handleApprove}
             onReject={handleReject}
+            selectedApplicantIds={selectedApplicantIds}
+            onToggleSelect={toggleApplicantSelection}
+            onToggleSelectAll={toggleSelectAllApplicants}
+            onBulkApproveSelected={handleBulkApproveSelected}
+            onApproveAll={handleApproveAllApplicants}
+            bulkApproving={bulkApproving}
           />
         )}
 
@@ -765,7 +849,7 @@ const Index = () => {
                 Chọn ngày chính thức bắt đầu để đồng bộ với các hệ thống khác.
               </p>
               <div className="space-y-2">
-                <Label htmlFor="program-start-date">Ngày bắt đầu</Label>
+                <Label htmlFor="program-start-date">Ngày bắt đầu chương trình</Label>
                 <Input
                   id="program-start-date"
                   type="date"
@@ -816,5 +900,4 @@ const Index = () => {
     </div>
   );
 };
-
 export default Index;
