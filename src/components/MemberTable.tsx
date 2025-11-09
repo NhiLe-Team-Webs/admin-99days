@@ -1,7 +1,8 @@
-import type { Member } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useMemo, useState } from "react";
 
+import type { Member } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,9 +12,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger
-} from "@/components/ui/alert-dialog"
-import { useState } from 'react';
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+const STATUS_LABELS: Record<Member["status"], string> = {
+  active: "Đang hoạt động",
+  paused: "Tạm dừng",
+  dropped: "Đã loại bỏ",
+};
 
 interface MemberTableProps {
   members: Member[];
@@ -22,78 +28,114 @@ interface MemberTableProps {
 }
 
 export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dropReason, setDropReason] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dropReason, setDropReason] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
   const normalizedMembers = members ?? [];
 
-  const filteredMembers = normalizedMembers.filter((member) => {
-    const keyword = searchTerm.toLowerCase();
-    return (
-      (member.ho_ten ?? '').toLowerCase().includes(keyword) ||
-      member.email.toLowerCase().includes(keyword) ||
-      (member.telegram ?? '').toLowerCase().includes(keyword) ||
-      (member.so_dien_thoai ?? '').toLowerCase().includes(keyword)
-    );
-  });
+  const filteredMembers = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return normalizedMembers;
+    return normalizedMembers.filter((member) => {
+      const fullName = (member.ho_ten ?? "").toLowerCase();
+      const email = member.email.toLowerCase();
+      const telegram = (member.telegram ?? "").toLowerCase();
+      const phone = (member.so_dien_thoai ?? "").toLowerCase();
+      return (
+        fullName.includes(keyword) ||
+        email.includes(keyword) ||
+        telegram.includes(keyword) ||
+        phone.includes(keyword)
+      );
+    });
+  }, [normalizedMembers, searchTerm]);
 
   const formatApprovedDate = (member: Member) => {
     const dateSource = member.approved_at ?? member.start_date ?? member.created_at;
-    return dateSource ? new Date(dateSource).toLocaleDateString('vi-VN') : '—';
+    return dateSource ? new Date(dateSource).toLocaleDateString("vi-VN") : "--";
+  };
+
+  const handleDrop = () => {
+    if (!selectedMemberId) return;
+    const reason = dropReason.trim();
+    if (!reason) return;
+    onDrop(selectedMemberId, reason);
+    setDropReason("");
+    setSelectedMemberId(null);
   };
 
   return (
     <div className="rounded-xl bg-card p-5 shadow-lg sm:p-6">
-      <h2 className="text-xl font-bold mb-4">Danh sách thành viên</h2>
+      <h2 className="mb-4 text-xl font-bold">Danh sách thành viên</h2>
       <Input
         type="text"
         placeholder="Tìm kiếm thành viên..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        className="w-full mb-4"
+        className="mb-4 w-full"
       />
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Họ tên</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Email</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Telegram</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Số điện thoại</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Ngày tham gia</th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">Trạng thái</th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase text-muted-foreground sm:px-6">Hành động</th>
+              <th className="px-2 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-4">
+                Số báo danh
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Họ tên
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Email
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Telegram
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Số điện thoại
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Ngày tham gia
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Trạng thái
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium uppercase text-muted-foreground sm:px-6">
+                Hành động
+              </th>
             </tr>
           </thead>
-          <tbody className="bg-card divide-y divide-border">
+          <tbody className="divide-y divide-border bg-card">
             {filteredMembers.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-8 text-muted-foreground">
-                  Không có thành viên nào phù hợp.
+                <td colSpan={8} className="py-8 text-center text-muted-foreground">
+                  Không có thành viên phù hợp.
                 </td>
               </tr>
             ) : (
-              filteredMembers.map((member) => (
+              filteredMembers.map((member, index) => (
                 <tr key={member.id}>
+                  <td className="px-2 py-4 text-sm font-semibold text-muted-foreground sm:px-4">
+                    {index + 1}
+                  </td>
                   <td className="px-4 py-4 sm:px-6">
-                    <div className="font-medium text-foreground">{member.ho_ten ?? "—"}</div>
+                    <div className="font-medium text-foreground">{member.ho_ten ?? "--"}</div>
                   </td>
                   <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-foreground">{member.email}</div>
                   </td>
                   <td className="px-4 py-4 sm:px-6">
-                    <div className="text-sm text-muted-foreground">{member.telegram ?? "—"}</div>
+                    <div className="text-sm text-muted-foreground">{member.telegram ?? "--"}</div>
                   </td>
                   <td className="px-4 py-4 sm:px-6">
-                    <div className="text-sm text-muted-foreground">{member.so_dien_thoai ?? "—"}</div>
+                    <div className="text-sm text-muted-foreground">{member.so_dien_thoai ?? "--"}</div>
                   </td>
                   <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-muted-foreground">{formatApprovedDate(member)}</div>
                   </td>
                   <td className="px-4 py-4 sm:px-6">
                     <div className="text-sm text-muted-foreground">
-                      {member.status === "dropped" ? "Bị loại bỏ" : "Đang hoạt động"}
+                      {STATUS_LABELS[member.status] ?? member.status}
                     </div>
                   </td>
                   <td className="px-4 py-4 text-center sm:px-6">
@@ -106,13 +148,13 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                       >
                         Xem chi tiết
                       </Button>
-                      {member.status !== 'dropped' && (
+                      {member.status !== "dropped" && (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-destructive hover:text-destructive-foreground hover:bg-destructive/10 font-semibold"
+                              className="font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive-foreground"
                               onClick={() => setSelectedMemberId(member.id)}
                             >
                               Xóa
@@ -120,30 +162,23 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Bạn có chắc muốn loại bỏ thành viên này không?</AlertDialogTitle>
+                              <AlertDialogTitle>
+                                Bạn có chắc muốn loại bỏ thành viên này khỏi chương trình?
+                              </AlertDialogTitle>
                               <AlertDialogDescription>
-                                Nhập lý do để loại bỏ thành viên này.
+                                Vui lòng nhập lý do để ghi nhận khi loại thành viên.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <Input
                               type="text"
-                              placeholder="Lý do loại bỏ thành viên..."
+                              placeholder="Lý do loại thành viên..."
                               value={dropReason}
                               onChange={(e) => setDropReason(e.target.value)}
-                              className="w-full mb-4"
+                              className="mb-4 w-full"
                             />
                             <AlertDialogFooter>
                               <AlertDialogCancel>Hủy</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => {
-                                  if (selectedMemberId) {
-                                    onDrop(selectedMemberId, dropReason);
-                                    setDropReason('');
-                                    setSelectedMemberId(null);
-                                  }
-                                }}
-                                disabled={!dropReason}
-                              >
+                              <AlertDialogAction onClick={handleDrop} disabled={!dropReason.trim()}>
                                 Xác nhận
                               </AlertDialogAction>
                             </AlertDialogFooter>
