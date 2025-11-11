@@ -51,6 +51,7 @@ create table if not exists public.members (
   ho_ten text,
   so_dien_thoai text,
   telegram text,
+  so_bao_danh text unique,
   nam_sinh integer,
   status text not null default 'active' check (status in ('active', 'paused', 'dropped')),
   drop_reason text,
@@ -66,6 +67,13 @@ create trigger members_set_updated_at
 before update on public.members
 for each row
 execute function public.set_updated_at();
+
+alter table if exists public.members
+  add column if not exists so_bao_danh text;
+
+create unique index if not exists members_so_bao_danh_key
+  on public.members (so_bao_danh)
+  where so_bao_danh is not null;
 
 -- Add drop_reason column
 ALTER TABLE public.members
@@ -315,6 +323,50 @@ with check (
 
 create index if not exists gratitude_entries_member_date_idx
   on public.gratitude_entries (member_id, entry_date);
+
+-- Daily voice entries ------------------------------------------------------
+create table if not exists public.daily_voice_entries (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.members (id) on delete cascade,
+  entry_date date not null default current_date,
+  message text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint daily_voice_unique_per_day unique (member_id, entry_date)
+);
+
+drop trigger if exists daily_voice_entries_set_updated_at on public.daily_voice_entries;
+create trigger daily_voice_entries_set_updated_at
+before update on public.daily_voice_entries
+for each row
+execute function public.set_updated_at();
+
+alter table public.daily_voice_entries enable row level security;
+
+drop policy if exists "Members manage their daily voice" on public.daily_voice_entries;
+create policy "Members manage their daily voice"
+on public.daily_voice_entries
+for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.daily_voice_entries.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.members m
+    where m.id = public.daily_voice_entries.member_id
+      and coalesce(m.email, '') = coalesce(auth.jwt()->>'email', '')
+  )
+);
+
+create index if not exists daily_voice_entries_member_date_idx
+  on public.daily_voice_entries (member_id, entry_date desc);
 
 -- Homework submissions ------------------------------------------------------
 create table if not exists public.homework_submissions (
