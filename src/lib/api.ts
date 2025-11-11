@@ -502,6 +502,19 @@ export const dropMember = async (id: string, dropReason: string) => {
   if (error) throw error;
 };
 
+export const restoreMember = async (id: string) => {
+  const { error } = await supabase
+    .from('members')
+    .update({
+      status: 'active',
+      drop_reason: null,
+      updated_at: nowIso(),
+    })
+    .eq('id', id);
+
+  if (error) throw error;
+};
+
 export const getMemberGratitudeEntries = async (memberId: string) => {
   const { data, error } = await supabase
     .from('gratitude_entries')

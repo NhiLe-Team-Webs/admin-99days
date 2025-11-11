@@ -12,6 +12,7 @@ import {
   getMembers,
   listZoomLinks,
   markDailyZoomLinkSent,
+  restoreMember,
   syncZoomLinks,
   updateAdminSettings,
   updateApplicantStatus,
@@ -200,7 +201,7 @@ const Index = () => {
     } finally {
       setLoading(false);
     }
-  }, [approveApplicant, assignZoomLinkForDate, checkAndDropInactiveMembers, dropMember, getAdminSettings, getApplicants, getDailyZoomLinkForDate, getMembers, listZoomLinks, markDailyZoomLinkSent, sortApplicantsByNewest, sortMembersByRecentApproval, syncZoomLinks, toast, updateAdminSettings, updateApplicantStatus, statusFilter]);
+  }, [approveApplicant, assignZoomLinkForDate, checkAndDropInactiveMembers, dropMember, getAdminSettings, getApplicants, getDailyZoomLinkForDate, getMembers, listZoomLinks, markDailyZoomLinkSent, restoreMember, sortApplicantsByNewest, sortMembersByRecentApproval, syncZoomLinks, toast, updateAdminSettings, updateApplicantStatus, statusFilter]);
 
   useEffect(() => {
     fetchData();
@@ -438,6 +439,32 @@ const Index = () => {
           toast({
             title: "Lỗi",
             description: "Không thể cập nhật danh sách thành viên.",
+            variant: "destructive",
+          });
+        } finally {
+          closeConfirmModal();
+        }
+      }
+    );
+  };
+
+  const handleRestoreMember = (id: string) => {
+    showConfirmModal(
+      "Khôi phục thành viên",
+      "Bạn có muốn khôi phục thành viên này về trạng thái đang tham gia?",
+      async () => {
+        try {
+          await restoreMember(id);
+          toast({
+            title: "Đã khôi phục thành viên",
+            description: "Thành viên đã được đưa trở lại danh sách hoạt động.",
+          });
+          await fetchData();
+        } catch (error) {
+          console.error("Failed to restore member:", error);
+          toast({
+            title: "Lỗi",
+            description: "Không thể khôi phục thành viên.",
             variant: "destructive",
           });
         } finally {
@@ -795,6 +822,7 @@ const Index = () => {
               <MemberTable
                 members={members}
                 onDrop={handleRemoveMember}
+                onRestore={handleRestoreMember}
                 onSelect={(member) => {
                   setSelectedMemberId(member.id);
                   setMemberDetailOpen(true);

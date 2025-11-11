@@ -24,10 +24,11 @@ const STATUS_LABELS: Record<Member["status"], string> = {
 interface MemberTableProps {
   members: Member[];
   onDrop: (id: string, reason: string) => void;
+  onRestore: (id: string) => void;
   onSelect: (member: Member) => void;
 }
 
-export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => {
+export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTableProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [dropReason, setDropReason] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -148,7 +149,16 @@ export const MemberTable = ({ members, onDrop, onSelect }: MemberTableProps) => 
                       >
                         Xem chi tiết
                       </Button>
-                      {member.status !== "dropped" && (
+                      {member.status === "dropped" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="font-semibold text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                          onClick={() => onRestore(member.id)}
+                        >
+                          Khôi phục
+                        </Button>
+                      ) : (
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
