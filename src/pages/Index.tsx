@@ -71,6 +71,7 @@ const TELEGRAM_BOT_TOKEN = (import.meta.env.VITE_TELEGRAM_BOT_TOKEN ?? "").trim(
 const TELEGRAM_CHAT_ID = (import.meta.env.VITE_TELEGRAM_GROUP_ID ?? "").trim();
 const TELEGRAM_DEFAULT_SEND_TIME =
   (import.meta.env.VITE_TELEGRAM_SEND_TIME ?? DEFAULT_SEND_TIME).trim() || DEFAULT_SEND_TIME;
+const TELEGRAM_AUTOSEND_ENABLED = false;
 
 const getTodayDate = () => new Date().toISOString().split("T")[0];
 const formatVietnamDate = (dateString: string) => new Date(`${dateString}T00:00:00`).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -121,10 +122,8 @@ const Index = () => {
   const [programStartDateSaving, setProgramStartDateSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const hasTelegramConfig = useMemo(
-    () => canSendTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID),
-    []
-  );
+  const hasTelegramConfig =
+    TELEGRAM_AUTOSEND_ENABLED && canSendTelegram(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID);
 
   const ensureTodayZoomLink = useCallback(
     async (availableLinks: ZoomLink[]) => {
@@ -551,6 +550,10 @@ const Index = () => {
   }, [dailyZoomLink, toast]);
 
   const handleSendToTelegram = useCallback(async () => {
+    if (!TELEGRAM_AUTOSEND_ENABLED) {
+      return;
+    }
+
     if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
       toast({
         title: "Chưa có link Zoom",
@@ -592,6 +595,10 @@ const Index = () => {
   }, [dailyZoomLink, hasTelegramConfig, telegramSending, toast]);
 
   useEffect(() => {
+    if (!TELEGRAM_AUTOSEND_ENABLED) {
+      return;
+    }
+
     if (!dailyZoomLink || !dailyZoomLink.zoom_link) {
       return;
     }
@@ -834,44 +841,18 @@ const Index = () => {
 
         {activeTab === "settings" && (
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
-              <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
-                <p className="text-sm text-muted-foreground">
-                Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-white/60 p-5 shadow-sm space-y-3 sm:p-6 lg:col-span-2">
+              <h3 className="text-lg font-semibold text-slate-900">Zoom & Telegram tạm ẩn</h3>
+              <p className="text-sm text-muted-foreground">
+                Việc cấu hình danh sách link Zoom và giờ gửi Telegram đã được vô hiệu hóa theo yêu cầu.
+                Các link hiện có vẫn được giữ nguyên, nhưng hệ thống sẽ không gửi tự động lên Telegram.
               </p>
-              <Textarea
-                rows={12}
-                value={zoomLinksText}
-                onChange={(e) => setZoomLinksText(e.target.value)}
-                placeholder="https://zoom.us/j/..."
-                className="font-mono"
-              />
-              <Button onClick={handleUpdateZoomLinks} disabled={zoomLinksSaving}>
-                {zoomLinksSaving ? "Đang lưu..." : "Lưu danh sách"}
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                Liên hệ đội kỹ thuật nếu cần mở lại tính năng này trong tương lai.
+              </p>
             </div>
 
-            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
-              <h3 className="text-lg font-semibold text-slate-900">Giờ gửi Telegram</h3>
-              <div className="space-y-2">
-                <Label htmlFor="telegram-send-time">Giờ gửi tự động (HH:MM)</Label>
-                <Input
-                  id="telegram-send-time"
-                  type="time"
-                  value={telegramSendTime}
-                  onChange={(e) => setTelegramSendTime(e.target.value)}
-                />
-              </div>
-              <Button
-                onClick={handleSaveTelegramSettings}
-                disabled={telegramSaving}
-                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white transition-colors duration-300"
-              >
-                {telegramSaving ? "Đang lưu giờ gửi..." : "Thêm giờ gửi"}
-              </Button>
-            </div>
-
-            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6 lg:col-span-2">
               <h3 className="text-lg font-semibold text-slate-900">Ngày bắt đầu chương trình</h3>
               <p className="text-sm text-muted-foreground">
                 Chọn ngày chính thức bắt đầu để đồng bộ với các hệ thống khác.
@@ -902,6 +883,47 @@ const Index = () => {
                 </p>
               )}
             </div>
+
+            {/*
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
+              <h3 className="text-lg font-semibold text-slate-900">Danh sách link Zoom</h3>
+              <p className="text-sm text-muted-foreground">
+                Nhập tối đa 7 link (mỗi dòng một link). Hệ thống sẽ chọn ngẫu nhiên mỗi sáng.
+              </p>
+              <Textarea
+                rows={12}
+                value={zoomLinksText}
+                onChange={(e) => setZoomLinksText(e.target.value)}
+                placeholder="https://zoom.us/j/..."
+                className="font-mono"
+              />
+              <Button onClick={handleUpdateZoomLinks} disabled={zoomLinksSaving}>
+                {zoomLinksSaving ? "Đang lưu..." : "Lưu danh sách"}
+              </Button>
+            </div>
+            */}
+
+            {/*
+            <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm space-y-4 sm:p-6">
+              <h3 className="text-lg font-semibold text-slate-900">Giờ gửi Telegram</h3>
+              <div className="space-y-2">
+                <Label htmlFor="telegram-send-time">Giờ gửi tự động (HH:MM)</Label>
+                <Input
+                  id="telegram-send-time"
+                  type="time"
+                  value={telegramSendTime}
+                  onChange={(e) => setTelegramSendTime(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={handleSaveTelegramSettings}
+                disabled={telegramSaving}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white transition-colors duration-300"
+              >
+                {telegramSaving ? "Đang lưu giờ gửi..." : "Thêm giờ gửi"}
+              </Button>
+            </div>
+            */}
           </div>
         )}
 
