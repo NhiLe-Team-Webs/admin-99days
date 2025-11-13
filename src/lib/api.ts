@@ -63,7 +63,7 @@ export interface Member {
   so_dien_thoai: string | null;
   telegram: string | null;
   nam_sinh: number | null;
-  status: 'active' | 'paused' | 'dropped';
+  status: 'active' | 'paused' | 'dropped' | 'reborn_pending' | 'reborn_active';
   drop_reason: string | null;
   applicant_id: string | null;
   approved_at?: string | null;
@@ -342,7 +342,7 @@ export const approveApplicant = async (applicantId: string) => {
 };
 
 // Lấy danh sách thành viên đang hoạt động
-export const getMembers = async (status?: 'active' | 'paused' | 'dropped') => {
+export const getMembers = async (status?: 'active' | 'paused' | 'dropped' | 'reborn_pending' | 'reborn_active') => {
   let query = supabase
     .from('members')
     .select('*');
@@ -498,7 +498,7 @@ export const dropMember = async (id: string, dropReason: string) => {
   const { error } = await supabase
     .from('members')
     .update({
-      status: 'dropped',
+      status: 'reborn_pending',
       drop_reason: dropReason ?? 'Removed by admin',
       updated_at: nowIso()
     })

@@ -1,8 +1,10 @@
 ﻿import React from 'react';
 
+type MemberStatusFilter = 'all' | 'active' | 'dropped' | 'reborn_pending' | 'reborn_active';
+
 interface StatusFilterProps {
-  value: string;
-  onChange: (value: string) => void;
+  value: MemberStatusFilter;
+  onChange: (value: MemberStatusFilter) => void;
 }
 
 export const StatusFilter: React.FC<StatusFilterProps> = ({ value, onChange }) => {
@@ -17,6 +19,8 @@ export const StatusFilter: React.FC<StatusFilterProps> = ({ value, onChange }) =
       >
         <option value="all">Tất cả</option>
         <option value="active">Đang hoạt động</option>
+        <option value="reborn_active">Đang tham gia ReBorn</option>
+        <option value="reborn_pending">Chờ xác nhận ReBorn</option>
         <option value="dropped">Bị loại bỏ</option>
       </select>
     </div>

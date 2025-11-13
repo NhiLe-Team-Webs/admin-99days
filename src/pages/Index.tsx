@@ -39,10 +39,7 @@ import { canSendTelegram, sendTelegramMessage } from "@/lib/telegram";
 import { StatusFilter } from "@/components/StatusFilter";
 import { useAuth } from "@/contexts/auth-context";
 
-interface StatusFilterProps {
-  value: "all" | "active" | "dropped";
-  onChange: (value: "all" | "active" | "dropped") => void;
-}
+type MemberStatusFilter = "all" | "active" | "dropped" | "reborn_pending" | "reborn_active";
 
 const tabs = [
   { id: "dashboard", label: "Bảng điều khiển" },
@@ -85,7 +82,7 @@ const Index = () => {
   const [members, setMembers] = useState<Member[]>([]);
  const [memberProgress, setMemberProgress] = useState<Record<string, ProgressUpdate[]>>({});
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "dropped">("all");
+  const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>("all");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [memberDetailOpen, setMemberDetailOpen] = useState(false);
   const [selectedApplicantIds, setSelectedApplicantIds] = useState<string[]>([]);
@@ -822,10 +819,7 @@ const Index = () => {
             </div>
           ) : (
             <>
-              <StatusFilter
-                value={statusFilter}
-                onChange={(value: "all" | "active" | "dropped") => setStatusFilter(value)}
-              />
+              <StatusFilter value={statusFilter} onChange={setStatusFilter} />
               <MemberTable
                 members={members}
                 onDrop={handleRemoveMember}

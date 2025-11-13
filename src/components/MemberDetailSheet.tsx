@@ -101,6 +101,10 @@ const statusLabel = (status: Member["status"]) => {
       return "Đang tham gia";
     case "paused":
       return "Tạm dừng";
+    case "reborn_pending":
+      return "Chờ xác nhận ReBorn";
+    case "reborn_active":
+      return "Đang tham gia ReBorn";
     case "dropped":
       return "Đã rời";
     default:

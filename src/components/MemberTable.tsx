@@ -19,6 +19,8 @@ const STATUS_LABELS: Record<Member["status"], string> = {
   active: "Đang hoạt động",
   paused: "Tạm dừng",
   dropped: "Đã loại bỏ",
+  reborn_pending: "Chờ xác nhận ReBorn",
+  reborn_active: "Đang tham gia ReBorn",
 };
 
 interface MemberTableProps {
@@ -151,7 +153,7 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
                       >
                         Xem chi tiết
                       </Button>
-                      {member.status === "dropped" ? (
+                      {member.status === "dropped" || member.status === "reborn_pending" ? (
                         <Button
                           variant="ghost"
                           size="sm"
