@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Applicant } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -32,12 +33,23 @@ export const ApplicantTable = ({
   bulkApproving = false,
 }: ApplicantTableProps) => {
   const [page, setPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     setPage(1);
   }, [applicants.length]);
 
-  const totalPages = Math.max(1, Math.ceil(applicants.length / ITEMS_PER_PAGE));
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  const filteredApplicants = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    if (!keyword) return applicants;
+    return applicants.filter((applicant) => (applicant.ho_ten ?? "").toLowerCase().includes(keyword));
+  }, [applicants, searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredApplicants.length / ITEMS_PER_PAGE));
 
   useEffect(() => {
     setPage((prev) => Math.min(prev, totalPages));
@@ -45,8 +57,8 @@ export const ApplicantTable = ({
 
   const paginatedApplicants = useMemo(() => {
     const start = (page - 1) * ITEMS_PER_PAGE;
-    return applicants.slice(start, start + ITEMS_PER_PAGE);
-  }, [applicants, page]);
+    return filteredApplicants.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredApplicants, page]);
 
   if (isLoading) {
     return (
@@ -76,7 +88,16 @@ export const ApplicantTable = ({
   return (
     <div className="rounded-xl bg-card p-5 shadow-lg sm:p-6">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold">Duyệt đơn đăng ký mới</h2>
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-bold">Duyệt đơn đăng ký mới</h2>
+          <Input
+            type="text"
+            placeholder="Tìm theo tên..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full sm:w-72"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -124,109 +145,122 @@ export const ApplicantTable = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-card">
-            {paginatedApplicants.map((applicant) => (
-              <tr key={applicant.id}>
-                <td className="px-2 py-4 text-center align-top sm:px-4">
-                  <Checkbox
-                    aria-label={`Chọn đơn của ${applicant.ho_ten}`}
-                    checked={selectedApplicantIds.includes(applicant.id)}
-                    onCheckedChange={(checked) => onToggleSelect(applicant.id, checked === true)}
-                  />
-                </td>
-                <td className="px-2 py-4 align-top text-sm font-semibold text-muted-foreground sm:px-4">
-                  {applicant.so_bao_danh ?? "Chưa có"}
-                </td>
-                <td className="px-4 py-4 align-top sm:px-6">
-                  <div className="font-semibold text-foreground">{applicant.ho_ten}</div>
-                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    <div>
-                      Năm sinh: {applicant.nam_sinh ?? "-"} · Giới tính: {applicant.gioi_tinh ?? "-"}
-                    </div>
-                    <div>Đã tham gia trước: {applicant.da_tham_gia_truoc ?? "-"}</div>
-                    <div>Địa chỉ: {applicant.dia_chi ?? "-"}</div>
-                    <div>
-                      Thời gian thức dậy: {applicant.thoi_gian_thuc_day ?? "-"} · Tần suất tập{" "}
-                      {applicant.tan_suat_tap_the_duc ?? "-"}
-                    </div>
-                    <div>
-                      Mức độ vận động{" "}
-                      {applicant.muc_do_van_dong !== null && applicant.muc_do_van_dong !== undefined
-                        ? `${applicant.muc_do_van_dong}/5`
-                        : "-"}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4 align-top sm:px-6">
-                  <div className="text-sm text-foreground">{applicant.email}</div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    <span className="rounded border border-primary/50 px-2 py-1 font-medium text-primary">
-                      {applicant.telegram ?? "-"}
-                    </span>
-                  </div>
-                  {applicant.link_bai_chia_se && (
-                    <div className="mt-3 text-xs">
-                      <a
-                        href={applicant.link_bai_chia_se}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-primary underline-offset-2 hover:underline"
-                      >
-                        Xem bài chia sẻ
-                      </a>
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-4 align-top text-sm text-muted-foreground sm:px-6">
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Mục tiêu 99 ngày</p>
-                      <p className="text-sm text-foreground">{applicant.muc_tieu ?? "-"}</p>
-                    </div>
-                    <div className="grid gap-1 text-xs">
-                      <span>
-                        Kỷ luật:{" "}
-                        {applicant.ky_luat_rating !== null && applicant.ky_luat_rating !== undefined
-                          ? `${applicant.ky_luat_rating}/5`
-                          : "-"}
-                      </span>
-                      <span>Động lực: {applicant.ly_do ?? "-"}</span>
-                      <span>Sức khỏe: {applicant.tinh_trang_suc_khoe ?? "-"}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4 text-center sm:px-6">
-                  <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onApprove(applicant.id)}
-                      className="font-semibold text-success hover:bg-success-light hover:text-success-foreground"
-                    >
-                      Duyệt
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onReject(applicant.id, applicant.ho_ten)}
-                      className="font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive-foreground"
-                    >
-                      Từ chối
-                    </Button>
-                  </div>
+            {paginatedApplicants.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                  Không tìm thấy ứng viên phù hợp.
                 </td>
               </tr>
-            ))}
+            ) : (
+              paginatedApplicants.map((applicant) => (
+                <tr key={applicant.id}>
+                  <td className="px-2 py-4 text-center align-top sm:px-4">
+                    <Checkbox
+                      aria-label={`Chọn đơn của ${applicant.ho_ten}`}
+                      checked={selectedApplicantIds.includes(applicant.id)}
+                      onCheckedChange={(checked) => onToggleSelect(applicant.id, checked === true)}
+                    />
+                  </td>
+                  <td className="px-2 py-4 align-top text-sm font-semibold text-muted-foreground sm:px-4">
+                    {applicant.so_bao_danh ?? "Chưa có"}
+                  </td>
+                  <td className="px-4 py-4 align-top sm:px-6">
+                    <div className="font-semibold text-foreground">{applicant.ho_ten}</div>
+                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      <div>
+                        Năm sinh: {applicant.nam_sinh ?? "-"} · Giới tính: {applicant.gioi_tinh ?? "-"}
+                      </div>
+                      <div>Đã tham gia trước: {applicant.da_tham_gia_truoc ?? "-"}</div>
+                      <div>Địa chỉ: {applicant.dia_chi ?? "-"}</div>
+                      <div>
+                        Thời gian thức dậy: {applicant.thoi_gian_thuc_day ?? "-"} · Tần suất tập{" "}
+                        {applicant.tan_suat_tap_the_duc ?? "-"}
+                      </div>
+                      <div>
+                        Mức độ vận động{" "}
+                        {applicant.muc_do_van_dong !== null && applicant.muc_do_van_dong !== undefined
+                          ? `${applicant.muc_do_van_dong}/5`
+                          : "-"}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 align-top sm:px-6">
+                    <div className="text-sm text-foreground">{applicant.email}</div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      <span className="rounded border border-primary/50 px-2 py-1 font-medium text-primary">
+                        {applicant.telegram ?? "-"}
+                      </span>
+                    </div>
+                    {applicant.link_bai_chia_se && (
+                      <div className="mt-3 text-xs">
+                        <a
+                          href={applicant.link_bai_chia_se}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary underline-offset-2 hover:underline"
+                        >
+                          Xem bài chia sẻ
+                        </a>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 align-top text-sm text-muted-foreground sm:px-6">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Mục tiêu 99 ngày</p>
+                        <p className="text-sm text-foreground">{applicant.muc_tieu ?? "-"}</p>
+                      </div>
+                      <div className="grid gap-1 text-xs">
+                        <span>
+                          Kỷ luật:{" "}
+                          {applicant.ky_luat_rating !== null && applicant.ky_luat_rating !== undefined
+                            ? `${applicant.ky_luat_rating}/5`
+                            : "-"}
+                        </span>
+                        <span>Động lực: {applicant.ly_do ?? "-"}</span>
+                        <span>Sức khỏe: {applicant.tinh_trang_suc_khoe ?? "-"}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 text-center sm:px-6">
+                    <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onApprove(applicant.id)}
+                        className="font-semibold text-success hover:bg-success-light hover:text-success-foreground"
+                      >
+                        Duyệt
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onReject(applicant.id, applicant.ho_ten)}
+                        className="font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive-foreground"
+                      >
+                        Từ chối
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
-      {applicants.length > ITEMS_PER_PAGE && (
+      {filteredApplicants.length > ITEMS_PER_PAGE && (
         <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
             Hiển thị{" "}
             <strong>
-              {(page - 1) * ITEMS_PER_PAGE + 1} - {Math.min(page * ITEMS_PER_PAGE, applicants.length)}
+              {filteredApplicants.length === 0
+                ? 0
+                : (page - 1) * ITEMS_PER_PAGE + 1}{" "}
+              -
+              {" "}
+              {Math.min(page * ITEMS_PER_PAGE, filteredApplicants.length)}
             </strong>{" "}
-            trong tổng số <strong>{applicants.length}</strong> đơn đăng ký
+            trong tổng số <strong>{filteredApplicants.length}</strong> đơn đăng ký
           </span>
           <div className="flex items-center gap-2">
             <Button
