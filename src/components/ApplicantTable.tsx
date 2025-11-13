@@ -1,6 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
+
 import type { Applicant } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+
+const ITEMS_PER_PAGE = 20;
 
 interface ApplicantTableProps {
   applicants: Applicant[];
@@ -27,6 +31,23 @@ export const ApplicantTable = ({
   onApproveAll,
   bulkApproving = false,
 }: ApplicantTableProps) => {
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [applicants.length]);
+
+  const totalPages = Math.max(1, Math.ceil(applicants.length / ITEMS_PER_PAGE));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const paginatedApplicants = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return applicants.slice(start, start + ITEMS_PER_PAGE);
+  }, [applicants, page]);
+
   if (isLoading) {
     return (
       <div className="rounded-xl bg-card p-5 shadow-lg sm:p-6">
@@ -103,7 +124,7 @@ export const ApplicantTable = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-border bg-card">
-            {applicants.map((applicant) => (
+            {paginatedApplicants.map((applicant) => (
               <tr key={applicant.id}>
                 <td className="px-2 py-4 text-center align-top sm:px-4">
                   <Checkbox
@@ -198,6 +219,38 @@ export const ApplicantTable = ({
           </tbody>
         </table>
       </div>
+      {applicants.length > ITEMS_PER_PAGE && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Hiển thị{" "}
+            <strong>
+              {(page - 1) * ITEMS_PER_PAGE + 1} - {Math.min(page * ITEMS_PER_PAGE, applicants.length)}
+            </strong>{" "}
+            trong tổng số <strong>{applicants.length}</strong> đơn đăng ký
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page === 1}
+            >
+              Trang trước
+            </Button>
+            <span>
+              Trang {page}/{totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page === totalPages}
+            >
+              Trang sau
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

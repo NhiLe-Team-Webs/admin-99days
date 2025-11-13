@@ -53,7 +53,7 @@ create table if not exists public.members (
   telegram text,
   so_bao_danh text unique,
   nam_sinh integer,
-  status text not null default 'active' check (status in ('active', 'paused', 'dropped')),
+  status text not null default 'active' check (status in ('active', 'paused', 'dropped', 'reborn_pending', 'reborn_active')),
   drop_reason text,
   start_date date not null default current_date,
   applicant_id uuid references public.applicants (id),
@@ -87,7 +87,7 @@ ALTER TABLE public.members
 DROP CONSTRAINT members_status_check;
 
 ALTER TABLE public.members
-ADD CONSTRAINT members_status_check CHECK (status IN ('active', 'paused', 'dropped'));
+ADD CONSTRAINT members_status_check CHECK (status IN ('active', 'paused', 'dropped', 'reborn_pending', 'reborn_active'));
 
 create table if not exists public.zoom_links (
   id uuid primary key default gen_random_uuid(),

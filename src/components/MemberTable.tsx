@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Member } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,8 @@ const STATUS_LABELS: Record<Member["status"], string> = {
   reborn_active: "Đang tham gia ReBorn",
 };
 
+const ITEMS_PER_PAGE = 20;
+
 interface MemberTableProps {
   members: Member[];
   onDrop: (id: string, reason: string) => void;
@@ -34,6 +36,7 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
   const [searchTerm, setSearchTerm] = useState("");
   const [dropReason, setDropReason] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const normalizedMembers = members ?? [];
 
@@ -55,6 +58,21 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
       );
     });
   }, [normalizedMembers, searchTerm]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / ITEMS_PER_PAGE));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const paginatedMembers = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return filteredMembers.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredMembers, page]);
 
   const formatApprovedDate = (member: Member) => {
     const dateSource = member.approved_at ?? member.start_date ?? member.created_at;
@@ -118,7 +136,7 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
                 </td>
               </tr>
             ) : (
-              filteredMembers.map((member) => (
+              paginatedMembers.map((member) => (
                 <tr key={member.id}>
                   <td className="px-2 py-4 text-sm font-semibold text-muted-foreground sm:px-4">
                     {member.so_bao_danh ?? "Chưa có"}
@@ -207,6 +225,43 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
           </tbody>
         </table>
       </div>
+      {filteredMembers.length > ITEMS_PER_PAGE && (
+        <div className="mt-4 flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>
+            Hiển thị{" "}
+            <strong>
+              {filteredMembers.length === 0
+                ? 0
+                : (page - 1) * ITEMS_PER_PAGE + 1}{" "}
+              -
+              {" "}
+              {Math.min(page * ITEMS_PER_PAGE, filteredMembers.length)}
+            </strong>{" "}
+            trong tổng số <strong>{filteredMembers.length}</strong> thành viên
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={page === 1}
+            >
+              Trang trước
+            </Button>
+            <span>
+              Trang {page}/{totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={page === totalPages}
+            >
+              Trang sau
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
