@@ -437,6 +437,12 @@ export const MemberDetailSheet = ({ member, open, onOpenChange }: MemberDetailSh
                       </p>
                     </div>
                     <div>
+                      <p className="text-xs uppercase text-muted-foreground">Số báo danh</p>
+                      <p className="text-base font-semibold text-foreground">
+                        {member.so_bao_danh ?? "Chưa cấp"}
+                      </p>
+                    </div>
+                    <div>
                       <p className="text-xs uppercase text-muted-foreground">Email</p>
                       <p className="text-base font-medium text-foreground">{member.email}</p>
                     </div>

@@ -33,6 +33,7 @@ export interface Applicant {
   id: string;
   ho_ten: string;
   email: string;
+  so_bao_danh: string | null;
   so_dien_thoai: string | null;
   telegram: string | null;
   nam_sinh: number | null;
@@ -58,6 +59,7 @@ export interface Member {
   id: string;
   ho_ten: string | null;
   email: string;
+  so_bao_danh: string | null;
   so_dien_thoai: string | null;
   telegram: string | null;
   nam_sinh: number | null;
@@ -253,16 +255,19 @@ export const approveApplicant = async (applicantId: string) => {
 
   const { data: existingMember, error: existingMemberError } = await supabase
     .from('members')
-    .select('id')
+    .select('id, so_bao_danh')
     .eq('email', applicant.email)
-    .maybeSingle<{ id: string }>();
+    .maybeSingle<{ id: string; so_bao_danh: string | null }>();
 
   if (existingMemberError) throw existingMemberError;
+
+  const derivedSoBaoDanh = applicant.so_bao_danh ?? existingMember?.so_bao_danh ?? null;
 
   const basePayload = {
     id: existingMember?.id ?? generateUuid(),
     email: applicant.email,
     ho_ten: applicant.ho_ten,
+    so_bao_danh: derivedSoBaoDanh,
     so_dien_thoai: applicant.so_dien_thoai,
     telegram: applicant.telegram,
     nam_sinh: applicant.nam_sinh,

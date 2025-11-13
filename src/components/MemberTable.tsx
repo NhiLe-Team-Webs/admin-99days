@@ -43,7 +43,9 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
       const email = member.email.toLowerCase();
       const telegram = (member.telegram ?? "").toLowerCase();
       const phone = (member.so_dien_thoai ?? "").toLowerCase();
+      const code = (member.so_bao_danh ?? "").toLowerCase();
       return (
+        code.includes(keyword) ||
         fullName.includes(keyword) ||
         email.includes(keyword) ||
         telegram.includes(keyword) ||
@@ -114,10 +116,10 @@ export const MemberTable = ({ members, onDrop, onRestore, onSelect }: MemberTabl
                 </td>
               </tr>
             ) : (
-              filteredMembers.map((member, index) => (
+              filteredMembers.map((member) => (
                 <tr key={member.id}>
                   <td className="px-2 py-4 text-sm font-semibold text-muted-foreground sm:px-4">
-                    {index + 1}
+                    {member.so_bao_danh ?? "Chưa có"}
                   </td>
                   <td className="px-4 py-4 sm:px-6">
                     <div className="font-medium text-foreground">{member.ho_ten ?? "--"}</div>

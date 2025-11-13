@@ -85,6 +85,9 @@ export const ApplicantTable = ({
                   disabled={applicants.length === 0}
                 />
               </th>
+              <th className="px-2 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-4">
+                SBD
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase text-muted-foreground sm:px-6">
                 Họ và tên
               </th>
@@ -108,6 +111,9 @@ export const ApplicantTable = ({
                     checked={selectedApplicantIds.includes(applicant.id)}
                     onCheckedChange={(checked) => onToggleSelect(applicant.id, checked === true)}
                   />
+                </td>
+                <td className="px-2 py-4 align-top text-sm font-semibold text-muted-foreground sm:px-4">
+                  {applicant.so_bao_danh ?? "Chưa có"}
                 </td>
                 <td className="px-4 py-4 align-top sm:px-6">
                   <div className="font-semibold text-foreground">{applicant.ho_ten}</div>
