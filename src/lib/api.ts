@@ -521,7 +521,9 @@ export const restoreMember = async (id: string) => {
 };
 
 export const getMemberGratitudeEntries = async (memberId: string) => {
-  const { data, error } = await supabase
+  // Use admin client to bypass RLS
+  const client = supabaseAdmin ?? supabase;
+  const { data, error } = await client
     .from('gratitude_entries')
     .select('id, member_id, entry_date, gratitude, created_at, updated_at')
     .eq('member_id', memberId)
@@ -543,7 +545,9 @@ export const getMemberHomeworkSubmissions = async (memberId: string) => {
 };
 
 export const getMemberProgressUpdates = async (memberId: string) => {
-  const { data, error } = await supabase
+  // Use admin client to bypass RLS
+  const client = supabaseAdmin ?? supabase;
+  const { data, error } = await client
     .from('progress_updates')
     .select('id, member_id, recorded_at, recorded_for, weight, height, waist, bust, hips, note, photo_url, created_at, updated_at')
     .eq('member_id', memberId)
